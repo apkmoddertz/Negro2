@@ -121,6 +121,16 @@ export default function App() {
   const [showAddTicket, setShowAddTicket] = useState(false);
   const [newTicketDate, setNewTicketDate] = useState("");
 
+  // Deletion state to avoid native confirm dialogs (blocked in some iframe configurations)
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    type: "match" | "group";
+    categoryId: string;
+    ticketIndex: number;
+    matchIndex?: number;
+    title: string;
+    message: string;
+  } | null>(null);
+
   // Navigation & Drawer States
   const [activeTab, setActiveTab] = useState<ActiveTab>("correct_score");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -154,6 +164,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
+      setIsDrawerOpen(false); // Explicitly close navigation drawer on auth change
       if (user) {
         setAuthError(null);
         try {
@@ -162,7 +173,7 @@ export default function App() {
             setUserProfile(userDoc.data());
           } else {
             // Create user document if it does not exist
-            const isMainAdmin = user.email === "jilalamasanja1998@gmail.com";
+            const isMainAdmin = user.email?.toLowerCase() === "jilalamasanja1998@gmail.com";
             const profile = {
               uid: user.uid,
               username: user.displayName || user.email?.split("@")[0] || "User",
@@ -178,7 +189,7 @@ export default function App() {
           console.error("Error loading user profile:", err);
           setFirestoreError(err.message || String(err));
           // Fallback in-memory profile so logged in user is not blocked
-          const isMainAdmin = user.email === "jilalamasanja1998@gmail.com";
+          const isMainAdmin = user.email?.toLowerCase() === "jilalamasanja1998@gmail.com";
           const fallbackProfile = {
             uid: user.uid,
             username: user.displayName || user.email?.split("@")[0] || "User",
@@ -367,22 +378,61 @@ export default function App() {
     }
   };
 
-  // 5. Delete Match from Firestore
-  const deleteMatch = async (categoryId: string, ticketIndex: number, matchIndex: number) => {
+  // 5. Delete and Duplicate Match from Firestore (without native blockages)
+  const triggerDeleteMatch = (categoryId: string, ticketIndex: number, matchIndex: number) => {
     const category = [...freeCategories, ...vipCategories].find(c => c.id === categoryId);
     if (!category) return;
+    const match = category.tickets[ticketIndex]?.matches[matchIndex];
+    if (!match) return;
 
-    if (!confirm("Are you sure you want to delete this match?")) return;
+    setDeleteConfirm({
+      type: "match",
+      categoryId,
+      ticketIndex,
+      matchIndex,
+      title: "Delete Match",
+      message: `Are you sure you want to delete the match "${match.home} vs {match.away}"?`
+    });
+  };
+
+  const triggerDeleteTicketGroup = (categoryId: string, ticketIndex: number) => {
+    const category = [...freeCategories, ...vipCategories].find(c => c.id === categoryId);
+    if (!category) return;
+    const ticket = category.tickets[ticketIndex];
+    if (!ticket) return;
+
+    setDeleteConfirm({
+      type: "group",
+      categoryId,
+      ticketIndex,
+      title: "Delete Ticket Group",
+      message: `Are you sure you want to delete the entire ticket group "${ticket.date}" and all its matches?`
+    });
+  };
+
+  const executeDelete = async () => {
+    if (!deleteConfirm) return;
+    const { type, categoryId, ticketIndex, matchIndex } = deleteConfirm;
+
+    const category = [...freeCategories, ...vipCategories].find(c => c.id === categoryId);
+    if (!category) {
+      setDeleteConfirm(null);
+      return;
+    }
 
     const updatedTickets = JSON.parse(JSON.stringify(category.tickets));
-    updatedTickets[ticketIndex].matches.splice(matchIndex, 1);
 
-    if (updatedTickets[ticketIndex].matches.length === 0) {
+    if (type === "match" && matchIndex !== undefined) {
+      updatedTickets[ticketIndex].matches.splice(matchIndex, 1);
+      if (updatedTickets[ticketIndex].matches.length === 0) {
+        updatedTickets.splice(ticketIndex, 1);
+      } else {
+        updatedTickets[ticketIndex].matches.forEach((m: any, idx: number) => {
+          m.num = idx + 1;
+        });
+      }
+    } else if (type === "group") {
       updatedTickets.splice(ticketIndex, 1);
-    } else {
-      updatedTickets[ticketIndex].matches.forEach((m: any, idx: number) => {
-        m.num = idx + 1;
-      });
     }
 
     try {
@@ -391,8 +441,43 @@ export default function App() {
         tickets: updatedTickets
       }, { merge: true });
     } catch (err: any) {
-      alert("Failed to delete match: " + err.message);
+      console.error("Deletion failed:", err);
+      setFirestoreError("Deletion failed: " + err.message);
+    } finally {
+      setDeleteConfirm(null);
     }
+  };
+
+  const duplicateMatch = async (categoryId: string, ticketIndex: number, matchIndex: number) => {
+    const category = [...freeCategories, ...vipCategories].find(c => c.id === categoryId);
+    if (!category) return;
+
+    const ticket = category.tickets[ticketIndex];
+    if (!ticket) return;
+
+    const matchToCopy = ticket.matches[matchIndex];
+    if (!matchToCopy) return;
+
+    const updatedTickets = JSON.parse(JSON.stringify(category.tickets));
+    const copiedMatch = {
+      ...matchToCopy,
+      num: updatedTickets[ticketIndex].matches.length + 1
+    };
+    updatedTickets[ticketIndex].matches.push(copiedMatch);
+
+    try {
+      await setDoc(doc(db, "categories", categoryId), {
+        ...category,
+        tickets: updatedTickets
+      }, { merge: true });
+    } catch (err: any) {
+      console.error("Failed to duplicate match:", err);
+      setFirestoreError("Failed to duplicate match: " + err.message);
+    }
+  };
+
+  const deleteMatch = async (categoryId: string, ticketIndex: number, matchIndex: number) => {
+    triggerDeleteMatch(categoryId, ticketIndex, matchIndex);
   };
 
   // Helpers for Date conversions
@@ -625,25 +710,10 @@ export default function App() {
   };
 
   const deleteTicketGroup = async (categoryId: string, ticketIndex: number) => {
-    const category = [...freeCategories, ...vipCategories].find(c => c.id === categoryId);
-    if (!category) return;
-
-    if (!confirm(`Are you sure you want to delete the entire ticket group: "${category.tickets[ticketIndex].date}"?`)) return;
-
-    const updatedTickets = JSON.parse(JSON.stringify(category.tickets));
-    updatedTickets.splice(ticketIndex, 1);
-
-    try {
-      await setDoc(doc(db, "categories", categoryId), {
-        ...category,
-        tickets: updatedTickets
-      }, { merge: true });
-    } catch (err: any) {
-      alert("Failed to delete ticket group: " + err.message);
-    }
+    triggerDeleteTicketGroup(categoryId, ticketIndex);
   };
 
-  const isMainAdmin = currentUser?.email === "jilalamasanja1998@gmail.com" || userProfile?.role === "admin";
+  const isMainAdmin = currentUser?.email?.toLowerCase() === "jilalamasanja1998@gmail.com" || userProfile?.role === "admin";
 
   // Fetch live exchange rates
   useEffect(() => {
@@ -696,17 +766,95 @@ export default function App() {
     fetchCredentialsStatus();
   }, []);
 
+  // Web Crypto RSA-SHA256 JWT Generation Helper for pure client-side Google FCM v1
+  const signJwtClientSide = async (privateKeyPem: string, clientEmail: string): Promise<string> => {
+    const pemHeader = "-----BEGIN PRIVATE KEY-----";
+    const pemFooter = "-----END PRIVATE KEY-----";
+    const pemContents = privateKeyPem
+      .replace(pemHeader, "")
+      .replace(pemFooter, "")
+      .replace(/\s+/g, "");
+
+    const binaryDerString = window.atob(pemContents);
+    const len = binaryDerString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryDerString.charCodeAt(i);
+    }
+
+    const privateKey = await window.crypto.subtle.importKey(
+      "pkcs8",
+      bytes.buffer,
+      {
+        name: "RSASSA-PKCS1-v1_5",
+        hash: { name: "SHA-256" },
+      },
+      false,
+      ["sign"]
+    );
+
+    const header = {
+      alg: "RS256",
+      typ: "JWT"
+    };
+
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+      iss: clientEmail,
+      scope: "https://www.googleapis.com/auth/firebase.messaging",
+      aud: "https://oauth2.googleapis.com/token",
+      exp: now + 3600,
+      iat: now
+    };
+
+    const base64url = (arrayBuffer: ArrayBuffer): string => {
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return window.btoa(binary)
+        .replace(/=/g, "")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_");
+    };
+
+    const base64urlStr = (str: string): string => {
+      return base64url(new TextEncoder().encode(str));
+    };
+
+    const stringToSign = base64urlStr(JSON.stringify(header)) + "." + base64urlStr(JSON.stringify(payload));
+
+    const signatureBuffer = await window.crypto.subtle.sign(
+      "RSASSA-PKCS1-v1_5",
+      privateKey,
+      new TextEncoder().encode(stringToSign)
+    );
+
+    const signature = base64url(signatureBuffer);
+    return stringToSign + "." + signature;
+  };
+
   const fetchCredentialsStatus = async () => {
     try {
-      const res = await fetch("/api/status");
-      const data = await res.json();
-      setCredentialsStatus(data);
+      const stored = localStorage.getItem("fcm_service_account");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        setCredentialsStatus({
+          configured: true,
+          projectId: parsed.project_id || parsed.projectId,
+          clientEmail: parsed.client_email || parsed.clientEmail
+        });
+      } else {
+        setCredentialsStatus({ configured: false });
+      }
     } catch (e) {
-      console.error("Failed to fetch server credentials status:", e);
+      console.error("Failed to check client credentials status:", e);
+      setCredentialsStatus({ configured: false });
     }
   };
 
-  // Save Service Account Credentials
+  // Save Service Account Credentials to Client Storage
   const handleSaveCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setCredError(null);
@@ -721,46 +869,43 @@ export default function App() {
         return;
       }
 
-      const res = await fetch("/api/credentials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(parsedJson)
-      });
+      const projectId = parsedJson.project_id || parsedJson.projectId;
+      const privateKey = parsedJson.private_key || parsedJson.privateKey;
+      const clientEmail = parsedJson.client_email || parsedJson.clientEmail;
 
-      const result = await res.json();
-      if (!res.ok) {
-        setCredError(result.error || "Failed to save credentials.");
-      } else {
-        setCredentialsJson("");
-        fetchCredentialsStatus();
-        setFcmResult(null);
-        // Switch to notification view automatically to let them try it
-        setActiveTab("notification");
+      if (!projectId || !privateKey || !clientEmail) {
+        setCredError("Service account is missing critical properties (project_id, private_key, or client_email)");
+        setIsSavingCreds(false);
+        return;
       }
+
+      localStorage.setItem("fcm_service_account", JSON.stringify(parsedJson));
+      setCredentialsJson("");
+      await fetchCredentialsStatus();
+      setFcmResult(null);
+      setActiveTab("notification");
     } catch (err: any) {
-      setCredError("Server connection error: " + err.message);
+      setCredError("Save credentials error: " + err.message);
     } finally {
       setIsSavingCreds(false);
     }
   };
 
-  // Delete credentials
+  // Delete credentials from Client Storage
   const handleDeleteCredentials = async () => {
-    if (!confirm("Are you sure you want to remove the server-side Service Account key?")) {
+    if (!confirm("Are you sure you want to remove the Service Account key?")) {
       return;
     }
     try {
-      const res = await fetch("/api/credentials", { method: "DELETE" });
-      if (res.ok) {
-        fetchCredentialsStatus();
-        setFcmResult(null);
-      }
+      localStorage.removeItem("fcm_service_account");
+      await fetchCredentialsStatus();
+      setFcmResult(null);
     } catch (e) {
       console.error("Failed to delete credentials:", e);
     }
   };
 
-  // Send Notification
+  // Send Notification Client-Side via Web Crypto + Google OAuth REST API
   const handleSendNotification = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !message.trim()) {
@@ -771,35 +916,94 @@ export default function App() {
     setFcmResult(null);
 
     try {
-      const res = await fetch("/api/send", {
+      const stored = localStorage.getItem("fcm_service_account");
+      if (!stored) {
+        throw new Error("No service account credentials configured.");
+      }
+      const sa = JSON.parse(stored);
+      const projectId = sa.project_id || sa.projectId;
+      const privateKey = (sa.private_key || sa.privateKey).replace(/\\n/g, "\n");
+      const clientEmail = sa.client_email || sa.clientEmail;
+
+      if (!projectId || !privateKey || !clientEmail) {
+        throw new Error("Service account is missing critical properties (project_id, private_key, or client_email)");
+      }
+
+      // 1. Generate standard JWT and get Access Token
+      const jwt = await signJwtClientSide(privateKey, clientEmail);
+      const oauthRes = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetType: "topic",
-          topic: "all",
-          title: title.trim(),
-          body: message.trim(),
-          imageUrl: imageUrl.trim(),
-          replicateInData: true, // Matches send.php data replication
-          androidPriority: "HIGH",
-          androidChannelId: "default"
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+          assertion: jwt
         })
       });
 
-      const result = await res.json();
-      
-      // Format the result block nicely, matching PHP output
+      if (!oauthRes.ok) {
+        const errorText = await oauthRes.text();
+        throw new Error(`Google Auth Token request failed: ${errorText}`);
+      }
+
+      const tokenData = await oauthRes.json();
+      const accessToken = tokenData.access_token;
+      if (!accessToken) {
+        throw new Error("No access_token returned from Google Auth.");
+      }
+
+      // 2. Prepare the FCM v1 message payload
+      const dataObj: Record<string, string> = {
+        title: title.trim(),
+        body: message.trim(),
+        image: imageUrl.trim(),
+        source: "zyromod"
+      };
+
+      const fcmPayload = {
+        message: {
+          topic: "all",
+          notification: {
+            title: title.trim(),
+            body: message.trim(),
+            ...(imageUrl.trim() ? { image: imageUrl.trim() } : {})
+          },
+          data: dataObj,
+          android: {
+            priority: "high",
+            notification: {
+              channel_id: "default",
+              sound: "default"
+            }
+          }
+        }
+      };
+
+      // 3. Post directly to Google's REST API endpoint
+      const fcmEndpoint = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+      const fcmRes = await fetch(fcmEndpoint, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(fcmPayload)
+      });
+
+      const fcmResultData = await fcmRes.json();
+
       const formattedResult = {
-        http_code: res.status,
+        http_code: fcmRes.status,
         curl_error: "",
-        fcm_response: result.fcmResponse || result
+        fcm_response: fcmResultData
       };
 
       setFcmResult(JSON.stringify(formattedResult, null, 4));
     } catch (err: any) {
       const errorResult = {
         http_code: 500,
-        curl_error: err.message || "Failed to connect to backend",
+        curl_error: err.message || "Failed client-side notification transmission",
         fcm_response: null
       };
       setFcmResult(JSON.stringify(errorResult, null, 4));
@@ -2583,77 +2787,6 @@ export default function App() {
                     </span>
                   </div>
 
-                  {isMainAdmin && (
-                    <div className="w-full max-w-[350px] mb-4 bg-gradient-to-r from-emerald-950/40 to-slate-900/50 border border-emerald-500/20 rounded-2xl p-4 flex flex-col gap-2.5 relative overflow-hidden shadow-xl text-left">
-                      <div className="absolute -right-6 -bottom-6 w-20 h-20 bg-emerald-500/5 rounded-full blur-xl pointer-events-none" />
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">🇹🇿</span>
-                          <div className="flex flex-col">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-[#E2FF00]">Dar es Salaam Admin</span>
-                            <span className="text-[9px] font-mono text-slate-400">Tanzania (East Africa Time - EAT)</span>
-                          </div>
-                        </div>
-                        <span className="text-[9px] font-mono font-bold bg-[#E2FF00]/10 border border-[#E2FF00]/20 px-2 py-0.5 rounded-full text-[#E2FF00] shrink-0">
-                          ONLINE
-                        </span>
-                      </div>
-                      
-                      <button
-                        onClick={() => {
-                          setUploadCategory(activeCategory.id);
-                          setUploadDate(new Date().toISOString().split("T")[0]);
-                          setUploadTime("");
-                          setUploadHome("");
-                          setUploadAway("");
-                          setUploadScore("");
-                          setUploadOdds("");
-                          setUploadStatus("pending");
-                          setShowUploadForm(true);
-                        }}
-                        className="w-full bg-[#E2FF00] hover:bg-[#c2db00] text-black font-extrabold text-[10.5px] py-2.5 rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer shadow-lg uppercase tracking-wider font-sans"
-                      >
-                        <Plus className="w-4 h-4" strokeWidth={3} />
-                        Upload Match Selection
-                      </button>
-                    </div>
-                  )}
-
-                  {isMainAdmin && (
-                    <div className="w-full max-w-[350px] mb-4 bg-slate-950/60 p-4 border border-white/10 rounded-2xl flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-300 flex items-center gap-1.5">
-                          <PlusCircle className="w-4.5 h-4.5 text-[#E2FF00]" />
-                          Create Ticket Group (Date)
-                        </span>
-                        <button
-                          onClick={() => setShowAddTicket(!showAddTicket)}
-                          className="text-[10px] font-bold text-[#E2FF00] hover:underline cursor-pointer"
-                        >
-                          {showAddTicket ? "Cancel" : "Add Date"}
-                        </button>
-                      </div>
-
-                      {showAddTicket && (
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            placeholder="e.g. 25 JUNE 2026 or TODAY MATCHES"
-                            value={newTicketDate}
-                            onChange={(e) => setNewTicketDate(e.target.value)}
-                            className="flex-1 bg-slate-900 border border-white/10 rounded-xl py-1.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#E2FF00]/50"
-                          />
-                          <button
-                            onClick={() => addTicketGroup(activeCategory.id)}
-                            className="bg-[#E2FF00] text-black font-extrabold px-3 rounded-xl text-xs uppercase tracking-wide cursor-pointer"
-                          >
-                            Create
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   {activeCategory.tickets.length === 0 && (
                     <div className="w-full max-w-[350px] bg-slate-900/40 border border-dashed border-white/10 rounded-2xl py-12 px-6 text-center text-slate-400 space-y-2.5 select-none mb-4">
                       <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center mx-auto border border-white/5">
@@ -2662,7 +2795,7 @@ export default function App() {
                       <p className="font-sans font-bold text-xs uppercase tracking-wider text-slate-300">No Active Tickets</p>
                       <p className="text-[10px] text-slate-500 leading-relaxed font-mono">
                         {isMainAdmin 
-                          ? "Use the 'Create Ticket Group' button above to add a betting group/date." 
+                          ? "Click the '+' Floating Action Button at the bottom right to upload a match selection." 
                           : "Please check back later! Our analysts are preparing the highest accuracy selections."}
                       </p>
                     </div>
@@ -2717,6 +2850,13 @@ export default function App() {
                                           title="Edit Match"
                                         >
                                           <Edit3 className="w-3.5 h-3.5" />
+                                        </button>
+                                        <button 
+                                          onClick={() => duplicateMatch(activeCategory.id, index, mIdx)}
+                                          className="p-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 transition-all cursor-pointer"
+                                          title="Duplicate Match"
+                                        >
+                                          <Copy className="w-3.5 h-3.5" />
                                         </button>
                                         <button 
                                           onClick={() => deleteMatch(activeCategory.id, index, mIdx)}
@@ -2803,6 +2943,13 @@ export default function App() {
                                         title="Edit Match"
                                       >
                                         <Edit3 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button 
+                                        onClick={() => duplicateMatch(activeCategory.id, index, mIdx)}
+                                        className="p-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 transition-all cursor-pointer"
+                                        title="Duplicate Match"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
                                       </button>
                                       <button 
                                         onClick={() => deleteMatch(activeCategory.id, index, mIdx)}
@@ -2977,6 +3124,74 @@ export default function App() {
                   className="flex-1 py-2 bg-[#E2FF00] rounded-xl text-xs font-black text-black hover:scale-[1.01] active:scale-95 transition-all cursor-pointer uppercase tracking-wider font-sans"
                 >
                   Save Changes
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Action Button (FAB) for Match Upload */}
+      {isMainAdmin && (
+        <button
+          onClick={() => {
+            setUploadCategory(activeCategory?.id || "");
+            setUploadDate(new Date().toISOString().split("T")[0]);
+            setUploadTime("");
+            setUploadHome("");
+            setUploadAway("");
+            setUploadScore("");
+            setUploadOdds("");
+            setUploadStatus("pending");
+            setShowUploadForm(true);
+          }}
+          className="fixed bottom-6 right-6 z-50 bg-[#E2FF00] hover:bg-[#d6f000] text-black w-14 h-14 rounded-full flex items-center justify-center shadow-[0_4px_20px_rgba(226,255,0,0.4)] active:scale-95 hover:scale-105 transition-all cursor-pointer border border-black/10"
+          title="Upload Match Selection"
+        >
+          <Plus className="w-6 h-6" strokeWidth={3} />
+        </button>
+      )}
+
+      {/* Custom Confirmation Dialog for Deletions */}
+      <AnimatePresence>
+        {deleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-md z-[70] flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-[#0b1017] border border-white/10 p-5 rounded-2xl w-full max-w-[340px] shadow-[0_25px_60px_rgba(0,0,0,0.9)] space-y-4 text-center"
+            >
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mx-auto border border-red-500/20 text-red-400">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-sm font-black uppercase tracking-wider text-white">
+                  {deleteConfirm.title}
+                </h3>
+                <p className="text-xs text-slate-400 leading-relaxed font-sans px-2">
+                  {deleteConfirm.message}
+                </p>
+              </div>
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-bold text-slate-300 transition-all cursor-pointer active:scale-95"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={executeDelete}
+                  className="flex-1 py-2 bg-red-600 hover:bg-red-500 rounded-xl text-xs font-black text-white transition-all cursor-pointer active:scale-95"
+                >
+                  Delete
                 </button>
               </div>
             </motion.div>
