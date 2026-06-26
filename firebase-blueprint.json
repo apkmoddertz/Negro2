@@ -1,0 +1,42 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account information, matching auth.uid",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "username", "email", "role", "createdAt"]
+    },
+    "Category": {
+      "title": "Tips Category",
+      "description": "Contains matches and ticket information for a specific tip category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "iconName": { "type": "string" },
+        "tickets": {
+          "type": "array",
+          "description": "List of active tickets for this category"
+        }
+      },
+      "required": ["id", "title", "iconName", "tickets"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Match tip categories containing matches data"
+    }
+  }
+}

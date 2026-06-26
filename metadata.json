@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Negro",
+  "description": "A fully functional web app to manage, format, and push Firebase Cloud Messaging (FCM) v1 notifications to Android APKs using Service Account keys.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
