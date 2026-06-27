@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "deploy": "npm run build && wrangler deploy",
+    "preview": "npm run build && wrangler dev"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -22,9 +24,11 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.42.3",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.14",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "wrangler": "^4.105.0"
   }
 }
