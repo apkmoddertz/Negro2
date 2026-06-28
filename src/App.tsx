@@ -2337,7 +2337,7 @@ export default function App() {
               <div className="flex flex-col flex-1">
                 {/* Menu Header with identical height/styling */}
                 <div className="h-[54px] px-4 flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-[#870404] via-[#a60606] to-[#870404]/98 relative select-none">
-                  <span className="text-sm font-black tracking-[0.12em] uppercase bg-gradient-to-r from-white to-[#E2FF00] bg-clip-text text-transparent">Negro Suite</span>
+                  <span className="text-sm font-black tracking-[0.12em] uppercase bg-gradient-to-r from-white to-[#E2FF00] bg-clip-text text-transparent">Negro Tips</span>
                   <button
                     onClick={() => setIsDrawerOpen(false)}
                     className="p-1.5 rounded-lg hover:bg-red-500/10 text-slate-300 hover:text-red-400 transition-all duration-300 cursor-pointer"
@@ -2353,15 +2353,18 @@ export default function App() {
                   <nav className="space-y-1.5">
                     <button
                       onClick={() => {
-                        const targetCategory = openedCategoryId || (toggleMode === "free" ? selectedFreeCat : selectedVipCat);
-                        const url = `${window.location.origin}${window.location.pathname}?standalone=true&category=${targetCategory}`;
-                        window.open(url, "_blank");
+                        setActiveTab("correct_score");
+                        setOpenedCategoryId(null);
                         setIsDrawerOpen(false);
                       }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs font-bold border-l-4 cursor-pointer text-slate-300 hover:text-white hover:bg-white/5 hover:translate-x-1 border-transparent hover:border-[#E2FF00]/50"
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs font-bold border-l-4 cursor-pointer ${
+                        activeTab === "correct_score"
+                          ? "bg-gradient-to-r from-[#E2FF00] to-[#cbfa00] text-black shadow-[0_0_15px_rgba(226,255,0,0.3)] translate-x-1 font-extrabold border-white/60"
+                          : "text-slate-300 hover:text-white hover:bg-white/5 hover:translate-x-1 border-transparent hover:border-[#E2FF00]/50"
+                      }`}
                     >
-                      <Trophy className="w-4 h-4 shrink-0 text-[#E2FF00]" />
-                      All Matches Activity
+                      <Trophy className="w-4 h-4 shrink-0 text-inherit" />
+                      All Matches
                     </button>
 
                     <button
@@ -2472,22 +2475,6 @@ export default function App() {
                     <LogOut className="w-4 h-4" />
                   </button>
                 </div>
-
-                <div className="bg-slate-950/60 rounded-xl p-3 text-center border border-white/5 relative overflow-hidden shadow-inner">
-                  <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] font-sans">
-                    Console Engine
-                  </p>
-                  <div className="flex items-center justify-center gap-1.5 mt-1">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                    </span>
-                    <span className="text-[9px] text-[#E2FF00] font-mono font-bold uppercase tracking-wider">
-                      v1.5.0 • Active
-                    </span>
-                  </div>
-                </div>
               </div>
             </motion.div>
           </>
@@ -2581,7 +2568,7 @@ export default function App() {
                       {(toggleMode === "free" ? freeCategories : vipCategories)
                         .filter((cat) => cat.id.includes("today"))
                         .map((cat) => {
-                          const isActive = toggleMode === "free" ? selectedFreeCat === cat.id : selectedVipCat === cat.id;
+                          const isActive = openedCategoryId === cat.id;
                           return (
                             <motion.button
                               key={cat.id}
@@ -2641,7 +2628,7 @@ export default function App() {
                       {(toggleMode === "free" ? freeCategories : vipCategories)
                         .filter((cat) => cat.id.includes("results"))
                         .map((cat) => {
-                          const isActive = toggleMode === "free" ? selectedFreeCat === cat.id : selectedVipCat === cat.id;
+                          const isActive = openedCategoryId === cat.id;
                           return (
                             <motion.button
                               key={cat.id}

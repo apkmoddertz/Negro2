@@ -48,6 +48,19 @@
         "amount": { "type": "string" }
       },
       "required": ["id", "userId", "username", "email", "categoryId", "screenshot", "status", "createdAt"]
+    },
+    "Agent": {
+      "title": "Support Agent",
+      "description": "Agent profiles for professional customer support chat",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["available", "busy", "offline"] }
+      },
+      "required": ["id", "name", "role", "imageUrl", "status"]
     }
   },
   "firestore": {
@@ -62,6 +75,10 @@
     "/proofs/{proofId}": {
       "schema": "Proof",
       "description": "Payment proof submissions"
+    },
+    "/agents/{agentId}": {
+      "schema": "Agent",
+      "description": "Support agent profiles"
     }
   }
 }

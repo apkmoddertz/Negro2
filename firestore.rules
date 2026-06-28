@@ -92,5 +92,11 @@ service cloud.firestore {
       allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
       allow delete: if isAdmin();
     }
+
+    // 6. Agents collection rules
+    match /agents/{agentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
   }
 }

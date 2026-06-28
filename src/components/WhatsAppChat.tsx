@@ -19,7 +19,52 @@ import {
   X,
   Trash2
 } from "lucide-react";
-import { doc, setDoc, collection } from "firebase/firestore";
+import { doc, setDoc, collection, onSnapshot } from "firebase/firestore";
+import { motion, AnimatePresence } from "motion/react";
+
+export interface Agent {
+  id: string;
+  name: string;
+  role: string;
+  personality: string;
+  imageUrl: string;
+  status: "available" | "busy" | "offline";
+}
+
+export const DEFAULT_AGENTS: Agent[] = [
+  {
+    id: "olivia",
+    name: "Olivia",
+    role: "Manager",
+    personality: "Professional, calm, experienced, and trusted. Used for important cases, escalations, and final decisions.",
+    imageUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150",
+    status: "available"
+  },
+  {
+    id: "sophia",
+    name: "Sophia",
+    role: "Customer Support Agent",
+    personality: "Friendly, helpful, patient, and welcoming. Used for general customer questions and first contact.",
+    imageUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150",
+    status: "available"
+  },
+  {
+    id: "alexander",
+    name: "Alexander",
+    role: "Senior Support Agent",
+    personality: "Professional, confident, and solution-focused. Used for technical issues and complex requests.",
+    imageUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150",
+    status: "available"
+  },
+  {
+    id: "william",
+    name: "William",
+    role: "Support Specialist",
+    personality: "Reliable, respectful, and efficient. Used for assisting users and handling requests.",
+    imageUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150",
+    status: "available"
+  }
+];
 
 interface WhatsAppChatProps {
   currentUser: any;
@@ -52,7 +97,14 @@ export default function WhatsAppChat({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  // Multi-agent support states
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState<string>("sophia");
+  const [showAgentsModal, setShowAgentsModal] = useState(false);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const agentFileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -194,6 +246,33 @@ export default function WhatsAppChat({
       document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, []);
+
+  // Sync and seed support agents
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "agents"), (snapshot) => {
+      if (!snapshot.empty) {
+        const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Agent));
+        const sorted = ["olivia", "sophia", "alexander", "william"].map(id => {
+          const found = loaded.find(a => a.id === id);
+          const orig = DEFAULT_AGENTS.find(a => a.id === id)!;
+          return found || orig;
+        });
+        setAgents(sorted);
+      } else {
+        DEFAULT_AGENTS.forEach(async (agent) => {
+          try {
+            await setDoc(doc(db, "agents", agent.id), agent);
+          } catch (e) {
+            console.error("Error seeding agent:", e);
+          }
+        });
+        setAgents(DEFAULT_AGENTS);
+      }
+    }, (error) => {
+      console.error("Error listening to agents:", error);
+    });
+    return () => unsubscribe();
+  }, [db]);
   
   // Selected user for Admin chat
   const [localSelectedUserId, localSetSelectedUserId] = useState<string | null>(null);
@@ -202,6 +281,7 @@ export default function WhatsAppChat({
   
   // Search state for Admin users list
   const [searchQuery, setSearchQuery] = useState("");
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   // Group messages for Admin view by user
   const chatSessions = React.useMemo(() => {
@@ -329,16 +409,23 @@ export default function WhatsAppChat({
 
       if (!targetUserId) return;
 
+      const activeAgent = agents.find(a => a.id === selectedAgentId) || DEFAULT_AGENTS.find(a => a.id === "sophia") || DEFAULT_AGENTS[1];
       const messageData = {
         id: messageId,
         userId: targetUserId,
         senderId: isMainAdmin ? "admin" : currentUser.uid,
         senderName: isMainAdmin ? "Admin" : (currentUser.displayName || currentUser.email || "User"),
         text: inputText.trim(),
+        message: inputText.trim(),
         images: attachedImages,
         timestamp: new Date().toISOString(),
         readByAdmin: isMainAdmin ? true : false,
-        readByUser: isMainAdmin ? false : true
+        readByUser: isMainAdmin ? false : true,
+        // Support agent identity metadata
+        senderType: isMainAdmin ? "admin" : "user",
+        agentName: isMainAdmin ? activeAgent.name : "",
+        agentRole: isMainAdmin ? activeAgent.role : "",
+        agentImage: isMainAdmin ? activeAgent.imageUrl : ""
       };
 
       await setDoc(doc(db, "chats", messageId), messageData);
@@ -390,9 +477,15 @@ export default function WhatsAppChat({
                 <MessageSquare className="w-3.5 h-3.5 text-[#00a884]" />
                 Client Chats
               </span>
-              <span className="text-[10px] bg-[#00a884]/10 text-[#00a884] px-2.5 py-0.5 rounded-full font-sans font-black">
-                {chatSessions.length} Active
-              </span>
+              <button
+                type="button"
+                onClick={() => setShowAgentsModal(true)}
+                className="text-[9px] bg-[#E2FF00]/15 text-yellow-600 hover:bg-[#E2FF00]/30 border border-yellow-600/20 px-2 py-0.5 rounded-md font-sans font-black uppercase cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+                title="Manage support agents and availability status"
+              >
+                <Sparkles className="w-2.5 h-2.5 text-yellow-500 animate-pulse" />
+                Agents Panel
+              </button>
             </div>
             
             {/* Search Input */}
@@ -469,6 +562,63 @@ export default function WhatsAppChat({
       {/* CHAT MAIN CONVERSATION WINDOW */}
       <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden">
         
+        {/* POLISHED CHAT HEADER */}
+        {(!isMainAdmin || selectedUserId) && activePartner && (
+          <div className="h-[54px] bg-[#f0f2f5] border-b border-[#d1d7db] px-4 flex items-center justify-between shrink-0 select-none z-20 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            <div className="flex items-center gap-3">
+              {isMainAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserId(null)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/50 active:scale-95 transition-all md:hidden cursor-pointer flex items-center justify-center"
+                  aria-label="Back to chat list"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
+              
+              {/* Partner Avatar / Identity */}
+              <div className="relative shrink-0">
+                <div className={`w-9 h-9 rounded-full ${activePartner.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-slate-300"} flex items-center justify-center text-slate-800 font-bold text-xs uppercase shadow-sm`}>
+                  {activePartner.username[0]}
+                </div>
+                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white animate-pulse" />
+              </div>
+              
+              <div className="flex flex-col text-left">
+                <span className="text-xs font-black text-[#111b21] flex items-center gap-1 font-sans uppercase tracking-wide">
+                  {activePartner.username}
+                  {activePartner.isVip && <Zap className="w-2.5 h-2.5 text-yellow-500 fill-yellow-500 shrink-0" />}
+                </span>
+                <span className="text-[9px] text-[#667781] font-mono leading-none mt-0.5">
+                  {activePartner.email}
+                </span>
+              </div>
+            </div>
+
+            {/* Right icons or status actions */}
+            <div className="flex items-center gap-2">
+              {!isMainAdmin && (
+                <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                  <span className="text-[8px] font-black uppercase text-emerald-600 tracking-wider">Agents Live</span>
+                </div>
+              )}
+              {isMainAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setShowAgentsModal(true)}
+                  className="text-[9px] bg-[#E2FF00]/15 text-yellow-600 hover:bg-[#E2FF00]/30 border border-yellow-600/20 px-2.5 py-1 rounded-md font-sans font-black uppercase cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+                  title="Manage support agents and availability status"
+                >
+                  <Sparkles className="w-3 h-3 text-yellow-500" />
+                  Manage Agents
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        
         {/* MESSAGES SCROLL CONTAINER with genuine WhatsApp Doodle Wallpaper look */}
         <div 
           id="chat-messages-container"
@@ -531,10 +681,32 @@ export default function WhatsAppChat({
                       ? "bg-[#d9fdd3] border border-[#e1f7de] rounded-tr-none text-[#111b21]" 
                       : "bg-[#ffffff] border border-[#e9edef] rounded-tl-none text-[#111b21]"
                   }`}>
-                    {/* Message Sender Name */}
-                    <span className="text-[8px] font-black uppercase tracking-wider text-[#005c4b] mb-0.5 select-none">
-                      {isMe ? "You" : msg.senderName}
-                    </span>
+                    {/* Message Sender Name / Agent Identity */}
+                    {msg.senderId === "admin" ? (
+                      <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-slate-150 select-none">
+                        <img
+                          src={msg.agentImage || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150"}
+                          alt={msg.agentName || "Support Agent"}
+                          className="w-6 h-6 rounded-full object-cover shrink-0 border border-slate-200 shadow-sm animate-fade-in"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black text-slate-800 leading-none font-sans">
+                            {msg.agentName || "Sophia"}
+                          </span>
+                          <span className="text-[7px] font-bold text-slate-400 tracking-wider uppercase leading-none mt-0.5">
+                            {msg.agentRole || "Support Agent"}
+                          </span>
+                        </div>
+                        <span className="text-[6.5px] font-bold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono">
+                          Support
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[8px] font-black uppercase tracking-wider text-[#005c4b] mb-1 select-none">
+                        {isMe ? "You" : msg.senderName}
+                      </span>
+                    )}
                     
                     {/* Image attachments */}
                     {msg.images && msg.images.length > 0 && (
@@ -545,15 +717,7 @@ export default function WhatsAppChat({
                               src={img} 
                               alt="Attached visual" 
                               className="object-cover w-full h-auto max-h-48 cursor-pointer hover:scale-[1.02] transition-transform duration-200" 
-                              onClick={() => {
-                                const w = window.open();
-                                if (w) {
-                                  w.document.write(`<img src="${img}" style="max-width:100%; max-height:100vh; display:block; margin:auto;" />`);
-                                  w.document.body.style.backgroundColor = "black";
-                                  w.document.body.style.margin = "0";
-                                  w.document.title = "View Image";
-                                }
-                              }}
+                              onClick={() => setZoomedImage(img)}
                             />
                           </div>
                         ))}
@@ -603,16 +767,68 @@ export default function WhatsAppChat({
         {(!isMainAdmin || selectedUserId) && (
           <div 
             id="fixed-chat-controls-container" 
-            className={`fixed bottom-0 right-0 z-30 bg-[#870404] transition-all duration-300 flex flex-col ${
+            className={`fixed bottom-0 right-0 z-30 bg-[#540202] transition-all duration-300 flex flex-col ${
               isMainAdmin ? 'left-0 md:left-[320px]' : 'left-0'
             }`}
             style={{
               paddingBottom: "env(safe-area-inset-bottom)"
             }}
           >
+            {/* Active Identity selector for admin */}
+            {isMainAdmin && agents.length > 0 && (
+              <div className="px-4 py-2.5 bg-black/30 border-b border-white/5 flex flex-wrap items-center justify-between gap-3 text-white/90 select-none">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                    Reply Identity:
+                  </span>
+                  {(() => {
+                    const activeAgent = agents.find(a => a.id === selectedAgentId) || DEFAULT_AGENTS.find(a => a.id === "sophia") || DEFAULT_AGENTS[1];
+                    return (
+                      <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/10 shadow-inner">
+                        <img 
+                          src={activeAgent.imageUrl} 
+                          alt={activeAgent.name} 
+                          className="w-5 h-5 rounded-full object-cover shrink-0 border border-white/20" 
+                          referrerPolicy="no-referrer"
+                        />
+                        <span className="text-[10px] font-black text-[#E2FF00] font-sans">{activeAgent.name}</span>
+                        <span className="text-[8px] font-bold text-slate-300">({activeAgent.role})</span>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          activeAgent.status === "available" ? "bg-emerald-500 animate-pulse" :
+                          activeAgent.status === "busy" ? "bg-amber-500" : "bg-slate-400"
+                        }`} />
+                      </div>
+                    );
+                  })()}
+                </div>
+                
+                {/* Switches buttons */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[8px] font-mono text-slate-400 uppercase tracking-wider">Switch Agent:</span>
+                  <div className="flex gap-1 animate-fade-in">
+                    {agents.map((agent) => (
+                      <button
+                        key={agent.id}
+                        type="button"
+                        onClick={() => setSelectedAgentId(agent.id)}
+                        className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                          selectedAgentId === agent.id
+                            ? "bg-[#E2FF00] text-black shadow-md font-extrabold scale-105"
+                            : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                        title={`Transferred/switch to ${agent.name} (${agent.role})`}
+                      >
+                        {agent.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Attached Image Previews Rail */}
             {attachedImages.length > 0 && (
-              <div className="px-4 py-2 bg-[#870404] border-b border-white/10 flex items-center gap-3 overflow-x-auto scrollbar-none animate-fade-in shrink-0">
+              <div className="px-4 py-2 bg-[#540202] border-b border-white/10 flex items-center gap-3 overflow-x-auto scrollbar-none animate-fade-in shrink-0">
                 {attachedImages.map((img, i) => (
                   <div key={i} className="relative shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 border-[#E2FF00] shadow-md group">
                     <img src={img} alt="Preview" className="w-full h-full object-cover" />
@@ -668,7 +884,7 @@ export default function WhatsAppChat({
             <form 
               id="chat-message-form"
               onSubmit={handleSend} 
-              className="py-0 px-3 bg-[#870404] flex items-end gap-2.5 shrink-0 relative z-20"
+              className="py-0 px-3 bg-[#540202] flex items-end gap-2.5 shrink-0 relative z-20"
             >
               {/* Left trigger buttons */}
               <div className="flex items-center gap-1.5 text-white/90 mb-1">
@@ -728,6 +944,250 @@ export default function WhatsAppChat({
           </div>
         )}
       </div>
+
+      {/* Support Agents Management Modal */}
+      <AnimatePresence>
+        {showAgentsModal && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[60] flex items-center justify-center p-4 select-none">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-[#0b1017] border border-white/10 p-5 rounded-2xl w-full max-w-[500px] shadow-[0_25px_60px_rgba(0,0,0,0.85)] flex flex-col max-h-[90vh]"
+            >
+              <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-[#E2FF00]" />
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white font-sans">
+                    Support Agent Identity System
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAgentsModal(false);
+                    setEditingAgent(null);
+                  }}
+                  className="p-1 hover:bg-white/5 rounded-full transition-all text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {editingAgent ? (
+                /* Edit Mode */
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      await setDoc(doc(db, "agents", editingAgent.id), editingAgent);
+                      setEditingAgent(null);
+                    } catch (err) {
+                      console.error("Error updating agent:", err);
+                    }
+                  }}
+                  className="space-y-4 text-left flex-1 overflow-y-auto"
+                >
+                  <div className="flex items-center gap-4 bg-white/5 p-3 rounded-xl border border-white/5">
+                    {/* Image picker */}
+                    <div className="relative group cursor-pointer" onClick={() => agentFileInputRef.current?.click()}>
+                      <img
+                        src={editingAgent.imageUrl || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150"}
+                        alt={editingAgent.name}
+                        className="w-16 h-16 rounded-full object-cover border-2 border-[#E2FF00] group-hover:opacity-75 transition-opacity"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 rounded-full transition-opacity text-[10px] text-white font-bold uppercase text-center leading-tight">
+                        Upload
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs font-black text-white uppercase font-sans">{editingAgent.name || "Agent"}</p>
+                      <p className="text-[10px] text-slate-400 font-medium">Click photo to upload custom support image.</p>
+                    </div>
+                    
+                    <input
+                      type="file"
+                      ref={agentFileInputRef}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          try {
+                            const base64 = await compressImage(file);
+                            setEditingAgent(prev => prev ? { ...prev, imageUrl: base64 } : null);
+                          } catch (err) {
+                            console.error("Error compressing agent image:", err);
+                          }
+                        }
+                      }}
+                      accept="image/*"
+                      className="hidden"
+                    />
+                  </div>
+
+                  <div className="space-y-3.5 text-left">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                        Agent Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editingAgent.name}
+                        onChange={(e) => setEditingAgent(prev => prev ? { ...prev, name: e.target.value } : null)}
+                        required
+                        className="w-full bg-[#121921] border border-white/10 px-3 py-2 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00] transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                        Role / Title
+                      </label>
+                      <input
+                        type="text"
+                        value={editingAgent.role}
+                        onChange={(e) => setEditingAgent(prev => prev ? { ...prev, role: e.target.value } : null)}
+                        required
+                        className="w-full bg-[#121921] border border-white/10 px-3 py-2 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00] transition-colors"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                        Availability Status
+                      </label>
+                      <select
+                        value={editingAgent.status}
+                        onChange={(e) => setEditingAgent(prev => prev ? { ...prev, status: e.target.value as any } : null)}
+                        className="w-full bg-[#121921] border border-white/10 px-3 py-2 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00] transition-colors cursor-pointer"
+                      >
+                        <option value="available">Available (Online)</option>
+                        <option value="busy">Busy (In Call)</option>
+                        <option value="offline">Offline (Away)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                        Personality & Deployment (Internal Info)
+                      </label>
+                      <p className="bg-[#121921] border border-white/5 px-3 py-2 rounded-lg text-[10px] leading-relaxed text-slate-300 italic">
+                        {editingAgent.personality || "No internal traits assigned."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2.5 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAgent(null)}
+                      className="flex-1 bg-white/5 hover:bg-white/10 text-slate-300 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-colors active:scale-95 cursor-pointer"
+                    >
+                      Back to list
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 bg-[#E2FF00] hover:bg-[#cbfa00] text-[#0b1017] py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-colors active:scale-95 shadow-md cursor-pointer"
+                    >
+                      Save Agent
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                /* Agents List Grid */
+                <div className="space-y-3.5 flex-1 overflow-y-auto scrollbar-thin text-left">
+                  <p className="text-[10px] text-slate-400 leading-relaxed">
+                    Manage support agent identities, titles, and availability. Changes are synced instantly with Firestore, updating client views in real-time.
+                  </p>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {agents.map((agent) => (
+                      <div
+                        key={agent.id}
+                        className="bg-white/5 border border-white/10 hover:border-[#E2FF00]/45 p-3.5 rounded-xl flex flex-col justify-between gap-3 text-left transition-all"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <img
+                            src={agent.imageUrl}
+                            alt={agent.name}
+                            className="w-10 h-10 rounded-full object-cover shrink-0 border border-white/15"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-white truncate uppercase tracking-wide">
+                              {agent.name}
+                            </p>
+                            <p className="text-[9px] text-[#E2FF00] font-black truncate uppercase tracking-widest leading-none mt-0.5">
+                              {agent.role}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-white/5 pt-2 mt-1">
+                          {/* Status Badge */}
+                          <div className="flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${
+                              agent.status === "available" ? "bg-emerald-500 animate-pulse" :
+                              agent.status === "busy" ? "bg-amber-500" : "bg-slate-400"
+                            }`} />
+                            <span className="text-[9px] font-mono text-slate-300 font-bold uppercase tracking-wider">
+                              {agent.status}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setEditingAgent({ ...agent })}
+                            className="text-[9px] bg-[#E2FF00]/10 hover:bg-[#E2FF00]/20 text-[#E2FF00] border border-[#E2FF00]/20 px-2.5 py-1 rounded font-black uppercase cursor-pointer transition-all active:scale-95"
+                          >
+                            Edit Profile
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Zoomed Image Lightbox */}
+      <AnimatePresence>
+        {zoomedImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setZoomedImage(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 cursor-zoom-out select-none"
+          >
+            {/* Close button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setZoomedImage(null);
+              }}
+              className="absolute top-4 right-4 p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all cursor-pointer z-50 active:scale-95"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            
+            {/* Image content */}
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 300 }}
+              src={zoomedImage}
+              alt="Zoomed attachment"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
