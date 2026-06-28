@@ -13,7 +13,6 @@ import {
   Video,
   MoreVertical,
   Paperclip,
-  Smile,
   ShieldCheck,
   Zap,
   X,
@@ -95,7 +94,6 @@ export default function WhatsAppChat({
   // Chat input
   const [inputText, setInputText] = useState("");
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   // Multi-agent support states
@@ -117,32 +115,6 @@ export default function WhatsAppChat({
       textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`;
     }
   }, [inputText]);
-
-  // Standard Emojis List
-  const emojis = [
-    "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "😊", "😇", "🙂", "🙃", "😉", "😌", "😍", "🥰", "😘", "😋", "😛", "😜", "🤪", "🤨", "🧐", "😎", "🤩", "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😫", "😩", "🥺", "😢", "😭", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨", "😰", "😥", "😓", "🤗", "🤔", "🫣", "🤭", "🤫", "🤥", "😶", "😐", "😑", "😬", "🫠", "🙄", "😯", "😴", "😵", "🤐", "🥴", "🤢", "🤮", "🤧", "😷", "🤒", "🤕", "🤑", "🤠", "😈", "💀", "👽", "🤖", "🎃", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞", "💓", "💗", "💖", "💘", "💝", "👍", "👎", "👊", "✊", "🤛", "🤜", "🤞", "✌️", "🤟", "🤘", "👌", "🤌", "🤏", "👈", "👉", "👆", "👇", "☝️", "✋", "🤚", "👋", "🤙", "💪", "🙏", "🤝", "👏", "🙌", "👐", "🤲", "🔥", "✨", "🌟", "⭐", "💫", "⚡", "💥", "💯", "🎉", "🎊", "🎈", "🎁", "🏆", "⚽", "🏀", "🏈", "🎯", "🎮", "💵", "💳", "📈", "📉", "✅", "❌", "⚠️", "👑", "💬"
-  ];
-
-  // Insert emoji at current cursor position in textarea
-  const insertEmoji = (emoji: string) => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const text = textarea.value;
-      const before = text.substring(0, start);
-      const after = text.substring(end, text.length);
-      setInputText(before + emoji + after);
-      
-      // Reset cursor position after React re-renders
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + emoji.length, start + emoji.length);
-      }, 0);
-    } else {
-      setInputText(prev => prev + emoji);
-    }
-  };
 
   // Client-side image compression helper
   const compressImage = (file: File): Promise<string> => {
@@ -801,37 +773,6 @@ export default function WhatsAppChat({
               </div>
             )}
 
-            {/* Emoji Picker Popover */}
-            {showEmojiPicker && (
-              <div 
-                id="emoji-picker-container" 
-                className="absolute bottom-full left-4 mb-3 w-[280px] sm:w-[320px] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40 animate-fade-in select-none"
-              >
-                <div className="px-3 py-1.5 bg-[#f0f2f5] border-b border-[#e9edef] flex justify-between items-center">
-                  <span className="text-[10px] font-black uppercase text-[#111b21] tracking-wider">Quick Emojis</span>
-                  <button 
-                    type="button"
-                    onClick={() => setShowEmojiPicker(false)}
-                    className="p-1 hover:bg-slate-200 rounded-full transition-all cursor-pointer flex items-center justify-center"
-                  >
-                    <X className="w-3.5 h-3.5 text-slate-500" />
-                  </button>
-                </div>
-                <div className="p-2 overflow-y-auto grid grid-cols-7 sm:grid-cols-8 gap-1.5 justify-items-center max-h-[160px] scrollbar-thin">
-                  {emojis.map((emoji, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => insertEmoji(emoji)}
-                      className="w-8 h-8 flex items-center justify-center text-lg hover:bg-slate-100 rounded-lg active:scale-90 transition-all cursor-pointer"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Main Form Area */}
             <form 
               id="chat-message-form"
@@ -840,16 +781,6 @@ export default function WhatsAppChat({
             >
               {/* Left trigger buttons */}
               <div className="flex items-center gap-1.5 text-white/90 mb-1">
-                <button
-                  id="emoji-btn-trigger"
-                  type="button"
-                  onClick={() => setShowEmojiPicker(prev => !prev)}
-                  className={`p-2 rounded-full cursor-pointer transition-all active:scale-90 ${showEmojiPicker ? 'text-[#E2FF00] bg-white/10' : 'text-white hover:text-[#E2FF00] hover:bg-white/10'}`}
-                  title="Select emoji"
-                >
-                  <Smile className="w-5.5 h-5.5 shrink-0" />
-                </button>
-
                 <button
                   type="button"
                   onClick={handleAttachmentClick}
@@ -878,7 +809,7 @@ export default function WhatsAppChat({
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Type your message..."
                   rows={1}
-                  className="w-full pl-4 pr-3 py-2.5 bg-white/95 focus:bg-white border border-transparent rounded-[22px] text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#E2FF00] placeholder-slate-400 transition-all shadow-sm resize-none max-h-[144px] overflow-y-auto block leading-relaxed"
+                  className="w-full pl-4 pr-3 py-2.5 bg-white/95 focus:bg-white border border-transparent rounded-xl text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#E2FF00] placeholder-slate-400 transition-all shadow-sm resize-none max-h-[144px] overflow-y-auto block leading-relaxed"
                   style={{ height: "38px" }}
                 />
               </div>

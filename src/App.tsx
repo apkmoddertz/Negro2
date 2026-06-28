@@ -2410,7 +2410,7 @@ export default function App() {
                     >
                       <div className="flex items-center gap-3">
                         <MessageSquare className="w-4 h-4 shrink-0 text-inherit" />
-                        <span>{isMainAdmin ? "Client Chats" : "WhatsApp Chat"}</span>
+                        <span>{isMainAdmin ? "Client Chats" : "Chat Support"}</span>
                       </div>
                       {(() => {
                         const count = isMainAdmin 
@@ -4202,7 +4202,7 @@ export default function App() {
         <button
           onClick={() => setActiveTab("chats")}
           className={`fixed ${isMainAdmin ? "bottom-24" : "bottom-6"} right-6 z-50 bg-[#25D366] hover:bg-[#20ba5a] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-[0_4px_25px_rgba(37,211,102,0.55)] active:scale-95 hover:scale-105 transition-all cursor-pointer border border-white/10`}
-          title="Open WhatsApp Chat Support"
+          title="Open Chat Support"
         >
           <div className="relative">
             <MessageSquare className="w-6 h-6 text-white" />
