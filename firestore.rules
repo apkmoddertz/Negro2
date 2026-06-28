@@ -43,11 +43,15 @@ service cloud.firestore {
                     ) &&
                     request.resource.data.email == request.auth.token.email;
 
-      // Allow users to edit their username, but prevent self-elevation of roles
-      allow update: if isSignedIn() && 
-                    isValidId(userId) &&
-                    request.auth.uid == userId && 
-                    request.resource.data.role == resource.data.role;
+      // Allow users to edit their username, but prevent self-elevation of roles or subscriptions
+      allow update: if isAdmin() ||
+                    (
+                      isSignedIn() && 
+                      isValidId(userId) &&
+                      request.auth.uid == userId && 
+                      request.resource.data.role == resource.data.role &&
+                      (request.resource.data.get('subscriptions', null) == resource.data.get('subscriptions', null))
+                    );
 
       allow delete: if isAdmin();
     }
@@ -59,6 +63,18 @@ service cloud.firestore {
       
       // Only the verified admin can modify matches data
       allow create, update, delete: if isAdmin();
+    }
+
+    // 4. Proofs collection rules
+    match /proofs/{proofId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && 
+                    isValidId(proofId) &&
+                    request.resource.data.userId == request.auth.uid &&
+                    request.resource.data.status == "pending";
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
   }
 }

@@ -31,7 +31,10 @@ import {
   ExternalLink,
   ShieldAlert,
   Globe,
-  Coins
+  Coins,
+  Camera,
+  Image,
+  UserCheck
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { freeTips, vipTips } from "./data/tipsData";
@@ -51,7 +54,9 @@ import {
   setDoc, 
   onSnapshot, 
   collection,
-  getDoc
+  getDoc,
+  query,
+  where
 } from "firebase/firestore";
 import { 
   LogIn, 
@@ -65,12 +70,15 @@ import {
   Mail
 } from "lucide-react";
 
-type ActiveTab = "notification" | "setting" | "correct_score";
+type ActiveTab = "notification" | "setting" | "correct_score" | "proofs";
 
 export default function App() {
   // Auth states
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  
+  const isMainAdmin = currentUser?.email?.toLowerCase() === "jilalamasanja1998@gmail.com" || userProfile?.role === "admin";
+
   const [authLoading, setAuthLoading] = useState(true);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -78,7 +86,20 @@ export default function App() {
   const [authUsername, setAuthUsername] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
+
+  // Proof and User VIP Management States
+  const [userProofs, setUserProofs] = useState<any[]>([]);
+  const [allProofs, setAllProofs] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [proofImage, setProofImage] = useState<string | null>(null);
+  const [uploadingProof, setUploadingProof] = useState<boolean>(false);
+  const [proofSubmitSuccess, setProofSubmitSuccess] = useState<string | null>(null);
+  const [proofSubmitError, setProofSubmitError] = useState<string | null>(null);
+  const [viewingScreenshot, setViewingScreenshot] = useState<string | null>(null);
+  const [userSearchQuery, setUserSearchQuery] = useState<string>("");
+  const [adminSubTab, setAdminSubTab] = useState<"pending" | "users">("pending");
 
   // Firestore categories state
   const [freeCategories, setFreeCategories] = useState<CategoryData[]>(freeTips);
@@ -134,6 +155,7 @@ export default function App() {
   // Navigation & Drawer States
   const [activeTab, setActiveTab] = useState<ActiveTab>("correct_score");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedProofCategory, setSelectedProofCategory] = useState<string>("vip_cs_today");
 
   // Home Page Navigation States
   const [toggleMode, setToggleMode] = useState<"free" | "vip">("free");
@@ -247,6 +269,61 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // 2b. Monitor user's own submitted proofs
+  useEffect(() => {
+    if (!currentUser) {
+      setUserProofs([]);
+      return;
+    }
+    const q = query(collection(db, "proofs"), where("userId", "==", currentUser.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        setUserProofs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } else {
+        setUserProofs([]);
+      }
+    }, (err) => {
+      console.error("Error loading user proofs:", err);
+    });
+    return () => unsubscribe();
+  }, [currentUser]);
+
+  // 2c. Monitor all proofs and all users for Admin VIP management
+  useEffect(() => {
+    if (!isMainAdmin) {
+      setAllProofs([]);
+      setAllUsers([]);
+      return;
+    }
+
+    const unsubProofs = onSnapshot(collection(db, "proofs"), (snapshot) => {
+      if (!snapshot.empty) {
+        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setAllProofs(list);
+      } else {
+        setAllProofs([]);
+      }
+    }, (err) => {
+      console.error("Error loading all proofs for admin:", err);
+    });
+
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      if (!snapshot.empty) {
+        setAllUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() })));
+      } else {
+        setAllUsers([]);
+      }
+    }, (err) => {
+      console.error("Error loading all users for admin:", err);
+    });
+
+    return () => {
+      unsubProofs();
+      unsubUsers();
+    };
+  }, [isMainAdmin]);
+
   // 3. User Authentication Trigger
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -343,7 +420,19 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Google Auth error:", err);
-      setAuthError(err.message || "Failed to sign in with Google. If the popup closed, please try again.");
+      if (err.code === "auth/unauthorized-domain" || err.message?.includes("unauthorized-domain")) {
+        const currentDomain = window.location.hostname;
+        setAuthError(
+          `Google Sign-In is blocked because this domain is not authorized in Firebase.\n\n` +
+          `To fix this:\n` +
+          `1. Open Firebase Console > Authentication > Settings.\n` +
+          `2. Under "Authorized domains", click "Add domain" and enter:\n` +
+          `   ${currentDomain}\n\n` +
+          `Or, simply Register & Login using an Email/Password above, which does not require domain authorization.`
+        );
+      } else {
+        setAuthError(err.message || "Failed to sign in with Google. If the popup closed, please try again.");
+      }
     } finally {
       setAuthSubmitting(false);
     }
@@ -713,7 +802,46 @@ export default function App() {
     triggerDeleteTicketGroup(categoryId, ticketIndex);
   };
 
-  const isMainAdmin = currentUser?.email?.toLowerCase() === "jilalamasanja1998@gmail.com" || userProfile?.role === "admin";
+  const handleApproveProof = async (proof: any) => {
+    try {
+      const userRef = doc(db, "users", proof.userId);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const userData = userSnap.data();
+        const currentSubs = userData.subscriptions || {};
+        const updatedSubs = { ...currentSubs, [proof.categoryId]: true };
+        await setDoc(userRef, { ...userData, subscriptions: updatedSubs }, { merge: true });
+      }
+      await setDoc(doc(db, "proofs", proof.id), { status: "approved" }, { merge: true });
+      alert("Subscription approved successfully!");
+    } catch (err: any) {
+      console.error("Error approving subscription:", err);
+      alert("Failed to approve subscription: " + err.message);
+    }
+  };
+
+  const handleRejectProof = async (proofId: string) => {
+    try {
+      await setDoc(doc(db, "proofs", proofId), { status: "rejected" }, { merge: true });
+      alert("Proof rejected successfully!");
+    } catch (err: any) {
+      console.error("Error rejecting proof:", err);
+      alert("Failed to reject proof: " + err.message);
+    }
+  };
+
+  const handleToggleUserSubscription = async (targetUser: any, categoryId: string) => {
+    try {
+      const userRef = doc(db, "users", targetUser.uid);
+      const currentSubs = targetUser.subscriptions || {};
+      const isSubscribed = currentSubs[categoryId] === true;
+      const updatedSubs = { ...currentSubs, [categoryId]: !isSubscribed };
+      await setDoc(userRef, { ...targetUser, subscriptions: updatedSubs }, { merge: true });
+    } catch (err: any) {
+      console.error("Error toggling user subscription:", err);
+      alert("Failed to update user subscription: " + err.message);
+    }
+  };
 
   // Fetch live exchange rates
   useEffect(() => {
@@ -1105,104 +1233,158 @@ export default function App() {
   }
 
   const menuGradient = {
-    background: "linear-gradient(160deg, #0e1520 0%, #080c14 55%, #030508 100%)",
+    background: "linear-gradient(160deg, #a60606 0%, #870404 55%, #590101 100%)",
     boxShadow: "12px 0 40px -4px rgba(0,0,0,0.85)"
   };
 
+  // Count matches in "TODAY MATCHES" ticket for today categories
+  function getTodayMatchesCount(category: CategoryData) {
+    let count = 0;
+    if (category.tickets && Array.isArray(category.tickets)) {
+      category.tickets.forEach((ticket, ticketIdx) => {
+        if (ticket.matches && Array.isArray(ticket.matches)) {
+          ticket.matches.forEach((match, mIdx) => {
+            const status = match.status || getMatchStatus(ticket.date, mIdx, ticketIdx);
+            if (status === "pending") {
+              count++;
+            }
+          });
+        }
+      });
+    }
+    return count;
+  }
+
+  // Count matches inside results categories
+  function getResultsMatchesCount(category: CategoryData) {
+    let count = 0;
+    if (category.tickets && Array.isArray(category.tickets)) {
+      category.tickets.forEach(ticket => {
+        if (ticket.matches && Array.isArray(ticket.matches)) {
+          count += ticket.matches.length;
+        }
+      });
+    }
+    return count;
+  }
+
   // Map category icons inside premium styled container wrappers
-  function renderCategoryIcon(iconName: string, isActive: boolean) {
+  function renderCategoryIcon(iconName: string, isActive: boolean, matchCount?: number, isResults: boolean = false) {
     const iconColor = isActive ? "text-[#E2FF00]" : "text-slate-300";
     const bgGlow = isActive ? "bg-[#E2FF00]/10 border border-[#E2FF00]/25 shadow-[0_0_8px_rgba(226,255,0,0.15)]" : "bg-white/5 border border-white/5";
-    const iconWrapper = `p-2.5 rounded-xl ${bgGlow} transition-all duration-300 flex items-center justify-center shadow-inner`;
+    const iconWrapper = `p-2.5 rounded-xl ${bgGlow} transition-all duration-300 flex items-center justify-center shadow-inner relative`;
     
+    let element;
     switch (iconName) {
       case "ThumbsUp":
-        return (
+        element = (
           <div className={iconWrapper}>
             <ThumbsUp className={`w-5.5 h-5.5 ${iconColor} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Calendar5":
-        return (
+        element = (
           <div className={iconWrapper}>
-            <div className="relative">
-              <Calendar className={`w-5.5 h-5.5 ${iconColor} transition-colors`} strokeWidth={1.8} />
-              <span className="absolute -bottom-1 -right-1.5 bg-[#E2FF00] text-black text-[7.5px] font-black px-1 py-0.5 rounded-sm shadow-[0_1px_3px_rgba(0,0,0,0.4)]">5+</span>
-            </div>
+            <Calendar className={`w-5.5 h-5.5 ${iconColor} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Calendar10":
-        return (
+        element = (
           <div className={iconWrapper}>
-            <div className="relative">
-              <Calendar className={`w-5.5 h-5.5 ${iconColor} transition-colors`} strokeWidth={1.8} />
-              <span className="absolute -bottom-1 -right-1.5 bg-[#E2FF00] text-black text-[7.5px] font-black px-1 py-0.5 rounded-sm shadow-[0_1px_3px_rgba(0,0,0,0.4)]">10+</span>
-            </div>
+            <Calendar className={`w-5.5 h-5.5 ${iconColor} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "PlusMinus":
-        return (
+        element = (
           <div className={iconWrapper}>
             <span className={`text-xs font-black tracking-tight ${iconColor} font-mono transition-colors`}>
               +/-
             </span>
           </div>
         );
+        break;
       case "Wallet":
-        return (
+        element = (
           <div className={iconWrapper}>
             <Layers className={`w-5.5 h-5.5 ${iconColor} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Tv":
-        return (
+        element = (
           <div className={iconWrapper}>
             <Tv className={`w-5.5 h-5.5 ${iconColor} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Crown":
-        return (
-          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center" : "p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center"}>
+        element = (
+          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center relative" : "p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/15 flex items-center justify-center relative"}>
             <Crown className={`w-5.5 h-5.5 ${isActive ? "text-[#E2FF00]" : "text-amber-500/80"} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Target":
-        return (
-          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center" : "p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/15 flex items-center justify-center"}>
+        element = (
+          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center relative" : "p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/15 flex items-center justify-center relative"}>
             <Target className={`w-5.5 h-5.5 ${isActive ? "text-[#E2FF00]" : "text-rose-500/80"} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Trophy":
-        return (
-          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center" : "p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/15 flex items-center justify-center"}>
+        element = (
+          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center relative" : "p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/15 flex items-center justify-center relative"}>
             <Trophy className={`w-5.5 h-5.5 ${isActive ? "text-[#E2FF00]" : "text-emerald-500/80"} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Shuffle":
-        return (
-          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center" : "p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/15 flex items-center justify-center"}>
+        element = (
+          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center relative" : "p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/15 flex items-center justify-center relative"}>
             <Shuffle className={`w-5.5 h-5.5 ${isActive ? "text-[#E2FF00]" : "text-cyan-500/80"} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Zap":
-        return (
+        element = (
           <div className={iconWrapper}>
             <Zap className={`w-5.5 h-5.5 ${isActive ? "text-[#E2FF00]" : "text-[#E2FF00]/60"} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       case "Timer":
-        return (
-          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center" : "p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/15 flex items-center justify-center"}>
+        element = (
+          <div className={isActive ? "p-2.5 rounded-xl bg-[#E2FF00]/15 border border-[#E2FF00]/30 shadow-[0_0_8px_rgba(226,255,0,0.2)] flex items-center justify-center relative" : "p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/15 flex items-center justify-center relative"}>
             <Timer className={`w-5.5 h-5.5 ${isActive ? "text-[#E2FF00]" : "text-orange-500/80"} transition-colors`} strokeWidth={1.8} />
           </div>
         );
+        break;
       default:
-        return (
+        element = (
           <div className={iconWrapper}>
             <Trophy className={`w-5.5 h-5.5 ${iconColor} transition-colors`} strokeWidth={1.8} />
           </div>
         );
     }
+    
+    if (matchCount !== undefined) {
+      const badgeBg = isResults 
+        ? "bg-emerald-500 text-white border-emerald-400 shadow-[0_1.5px_8px_rgba(16,185,129,0.6)]" 
+        : "bg-[#E2FF00] text-black border-black/25 shadow-[0_1.5px_4px_rgba(0,0,0,0.5)]";
+      return (
+        <div className="relative">
+          {element}
+          <span className={`absolute -top-1.5 -right-1.5 text-[8.5px] font-black min-w-[17px] h-[17px] px-1 flex items-center justify-center rounded-full border z-10 select-none animate-fade-in font-mono ${badgeBg}`}>
+            {matchCount}
+          </span>
+        </div>
+      );
+    }
+
+    return element;
   }
 
   // Find active data to display tickets for
@@ -1213,227 +1395,153 @@ export default function App() {
 
   // Background style
   const backgroundStyle = activeTab === "correct_score" ? {
-    backgroundImage: `linear-gradient(rgba(10, 15, 23, 0.72), rgba(10, 15, 23, 0.95)), url("https://i.ibb.co/NdsrmZx0/2d4e211d-777e-4801-bd34-cdb12a906b44.jpg")`,
+    backgroundImage: `linear-gradient(rgba(48, 2, 2, 0.88), rgba(48, 2, 2, 0.97)), url("https://i.ibb.co/NdsrmZx0/2d4e211d-777e-4801-bd34-cdb12a906b44.jpg")`,
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundAttachment: "fixed"
-  } : {};
+  } : {
+    backgroundColor: "#300202"
+  };
 
   if (authLoading) {
+    return null;
+  }
+
+  if (!currentUser) {
     return (
-      <div className="min-h-screen bg-[#070b0f] text-slate-100 font-sans flex flex-col items-center justify-center relative overflow-hidden">
-        {/* Elegant Header glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[240px] h-[150px] bg-[#E2FF00]/10 blur-[80px] pointer-events-none rounded-full" />
-        <div className="flex flex-col items-center text-center space-y-4 select-none">
-          <div className="w-12 h-12 rounded-2xl bg-[#E2FF00] flex items-center justify-center shadow-[0_0_20px_rgba(226,255,0,0.35)] animate-pulse">
-            <Trophy className="w-7 h-7 text-black" strokeWidth={2.5} />
+      <div className="min-h-screen bg-[#f5f5f5] flex justify-center items-stretch w-full overflow-x-hidden">
+        <div className="phone-container">
+          {/* Blue Top Banner */}
+          <div className="header-bg select-none">
+            <h1>Negro</h1>
+            <p>Betting Tips</p>
           </div>
-          <h1 className="text-2xl font-black text-white tracking-widest uppercase font-sans">
-            SURE<span className="text-[#E2FF00]">CHIPS</span>
-          </h1>
-          <RefreshCw className="w-5 h-5 animate-spin text-[#E2FF00]" />
+
+          {/* Floating Card View */}
+          <div className="login-card">
+            <h2 className="card-title uppercase">
+              {authMode === "login" ? "LOGIN" : "REGISTER"}
+            </h2>
+
+            <form onSubmit={handleAuth} className="w-full">
+              {/* Username Field - Only on Register */}
+              {authMode === "register" && (
+                <div className="input-group">
+                  <label htmlFor="username">Username</label>
+                  <input
+                    type="text"
+                    id="username"
+                    required
+                    placeholder="Enter your username"
+                    autoComplete="off"
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {/* Email Field */}
+              <div className="input-group">
+                <label htmlFor="email">Email</label>
+                <input
+                  type="email"
+                  id="email"
+                  required
+                  placeholder="example@email.com"
+                  autoComplete="off"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                />
+              </div>
+
+              {/* Password Field */}
+              <div className="input-group">
+                <label htmlFor="password">Password</label>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  id="password"
+                  required
+                  placeholder="••••••••"
+                  autoComplete="off"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                />
+                <span
+                  className="password-icon select-none"
+                  id="togglePassword"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? "🙈" : "👁️"}
+                </span>
+              </div>
+
+              {/* Error Alert Display */}
+              {authError && (
+                <div className="text-[11px] text-red-600 bg-red-50 border border-red-200 p-2.5 rounded-lg text-center mb-4 leading-relaxed max-h-[120px] overflow-y-auto whitespace-pre-line font-sans">
+                  {authError}
+                </div>
+              )}
+
+              {/* Main Interactive Login/Register Button */}
+              <button
+                type="submit"
+                disabled={authSubmitting}
+                className="login-btn flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-75"
+              >
+                {authSubmitting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                ) : authMode === "login" ? (
+                  "LOGIN"
+                ) : (
+                  "REGISTER"
+                )}
+              </button>
+
+              {/* Bottom Registration/Login Toggle Flow */}
+              <p className="signup-text text-center">
+                {authMode === "login" ? (
+                  <>
+                    Don't have an account?{" "}
+                    <a
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setAuthMode("register");
+                        setAuthError(null);
+                      }}
+                    >
+                      Sign Up
+                    </a>
+                  </>
+                ) : (
+                  <>
+                    Already have an account?{" "}
+                    <a
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setAuthMode("login");
+                        setAuthError(null);
+                      }}
+                    >
+                      Log In
+                    </a>
+                  </>
+                )}
+              </p>
+            </form>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!currentUser) {
-    return (
-      <div 
-        className="min-h-screen bg-[#070b0f] text-slate-100 font-sans flex flex-col items-center justify-center p-4 relative overflow-hidden"
-        style={{
-          backgroundImage: `linear-gradient(rgba(7, 11, 15, 0.88), rgba(7, 11, 15, 0.99)), url("https://i.ibb.co/NdsrmZx0/2d4e211d-777e-4801-bd34-cdb12a906b44.jpg")`,
-          backgroundSize: "cover",
-          backgroundPosition: "center"
-        }}
-      >
-        {/* Dynamic visual ambient aura effects */}
-        <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[50%] bg-[#E2FF00]/10 blur-[130px] rounded-full pointer-events-none" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-emerald-500/5 blur-[120px] rounded-full pointer-events-none" />
-
-        <motion.div
-          initial={{ scale: 0.95, y: 12, opacity: 0 }}
-          animate={{ scale: 1, y: 0, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 100, damping: 15 }}
-          className="w-full max-w-[365px] bg-slate-900/85 border border-white/10 rounded-3xl p-7 shadow-[0_30px_70px_rgba(0,0,0,0.85)] backdrop-blur-2xl space-y-6 relative z-10"
-        >
-          {/* Main Visual Logo and Accent Badge */}
-          <div className="flex flex-col items-center text-center space-y-2 select-none">
-            <div className="w-12 h-12 rounded-2xl bg-[#E2FF00] flex items-center justify-center shadow-[0_0_25px_rgba(226,255,0,0.4)] transform hover:rotate-6 transition-all duration-300">
-              <Trophy className="w-6 h-6 text-black" strokeWidth={2.5} />
-            </div>
-            <h1 className="text-2xl font-black text-white tracking-widest uppercase mt-3 font-sans">
-              SURE<span className="text-[#E2FF00]">CHIPS</span>
-            </h1>
-            <div className="px-3 py-1 rounded-full bg-slate-950/80 border border-white/10 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-[#E2FF00] rounded-full animate-ping" />
-              <p className="text-[9px] font-mono text-slate-300 uppercase tracking-widest font-black">
-                VIP Soccer Predictions
-              </p>
-            </div>
-          </div>
-
-          {/* Premium Sign-In Method Selector Tabs */}
-          <div className="flex bg-slate-950/70 rounded-xl p-1 border border-white/5 relative">
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode("login");
-                setAuthError(null);
-              }}
-              className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                authMode === "login"
-                  ? "bg-[#E2FF00] text-black shadow-[0_3px_12px_rgba(226,255,0,0.3)]"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              Log In
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAuthMode("register");
-                setAuthError(null);
-              }}
-              className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                authMode === "register"
-                  ? "bg-[#E2FF00] text-black shadow-[0_3px_12px_rgba(226,255,0,0.3)]"
-                  : "text-slate-400 hover:text-white"
-              }`}
-            >
-              <User className="w-3.5 h-3.5" />
-              Register
-            </button>
-          </div>
-
-          {/* Interactive Secure Input Form */}
-          <form onSubmit={handleAuth} className="space-y-4">
-            {authMode === "register" && (
-              <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1 pl-1">
-                  Desired Username
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Winner2026"
-                    value={authUsername}
-                    onChange={(e) => setAuthUsername(e.target.value)}
-                    className="w-full bg-slate-950/60 border border-white/10 hover:border-[#E2FF00]/30 rounded-xl py-3 pl-11 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#E2FF00] focus:ring-1 focus:ring-[#E2FF00]/30 transition-all font-sans"
-                  />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1 pl-1">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="email"
-                  required
-                  placeholder="e.g. mail@domain.com"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full bg-slate-950/60 border border-white/10 hover:border-[#E2FF00]/30 rounded-xl py-3 pl-11 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#E2FF00] focus:ring-1 focus:ring-[#E2FF00]/30 transition-all font-sans"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1 pl-1">
-                Account Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full bg-slate-950/60 border border-white/10 hover:border-[#E2FF00]/30 rounded-xl py-3 pl-11 pr-4 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#E2FF00] focus:ring-1 focus:ring-[#E2FF00]/30 transition-all font-sans"
-                />
-              </div>
-            </div>
-
-            {authError && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-[11px] text-rose-300 bg-rose-950/30 border border-rose-900/40 p-3 rounded-xl text-center leading-relaxed font-sans space-y-1"
-              >
-                <div className="font-bold uppercase tracking-wider text-[9px] text-rose-400">Security Alert</div>
-                <div className="whitespace-pre-line">{authError}</div>
-              </motion.div>
-            )}
-
-            <button
-              type="submit"
-              disabled={authSubmitting}
-              className="w-full bg-[#E2FF00] hover:bg-[#d6f000] hover:scale-[1.01] active:scale-[0.99] disabled:bg-slate-800 disabled:text-slate-500 text-black py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 mt-4"
-            >
-              {authSubmitting ? (
-                <RefreshCw className="w-4 h-4 animate-spin text-black" />
-              ) : authMode === "login" ? (
-                "Log In Account"
-              ) : (
-                "Create Account"
-              )}
-            </button>
-          </form>
-
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-white/10"></div>
-            <span className="flex-shrink mx-4 text-slate-500 font-mono text-[9px] uppercase tracking-wider">Or</span>
-            <div className="flex-grow border-t border-white/10"></div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={authSubmitting}
-            className="w-full bg-slate-850 hover:bg-slate-800 border border-white/10 hover:scale-[1.01] active:scale-[0.99] disabled:bg-slate-800 disabled:text-slate-500 text-slate-100 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2"
-          >
-            <svg className="w-4 h-4 text-white" viewBox="0 0 24 24">
-              <path
-                fill="currentColor"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="currentColor"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="currentColor"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6-4.53z"
-              />
-            </svg>
-            Sign In with Google
-          </button>
-
-          {/* Support / Contact details */}
-          <div className="pt-4 border-t border-white/5 text-center select-none text-slate-500 font-mono text-[8px] uppercase tracking-wider">
-            Admin Contact: <span className="text-slate-400 font-bold">jilalamasanja1998@gmail.com</span>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
+  const isSubscribedToActiveCategory = isMainAdmin || (userProfile?.subscriptions?.[activeCategory?.id] === true);
 
   return (
     <div 
       style={backgroundStyle}
-      className="min-h-screen bg-[#070b0f] text-slate-100 font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pb-12 pt-14 relative overflow-x-hidden transition-all duration-500"
+      className="min-h-screen bg-[#300202] text-slate-100 font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pb-12 pt-14 relative overflow-x-hidden transition-all duration-500"
     >
       
       {/* Background ambient radial glow if not in correct score */}
@@ -1447,6 +1555,39 @@ export default function App() {
 
       {/* Dynamic style tag for correct score ticketing aesthetics */}
       <style>{`
+        @keyframes resultsPulse {
+          0% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+            transform: scale(1);
+          }
+          50% {
+            box-shadow: 0 0 12px 4px rgba(16, 185, 129, 0.7);
+            transform: scale(1.08);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+            transform: scale(1);
+          }
+        }
+        @keyframes textShimmer {
+          0% {
+            opacity: 0.8;
+          }
+          50% {
+            opacity: 1;
+            text-shadow: 0 0 6px rgba(52, 211, 153, 0.9);
+          }
+          100% {
+            opacity: 0.8;
+          }
+        }
+        .animate-results-badge {
+          animation: resultsPulse 2s infinite ease-in-out;
+        }
+        .animate-results-text {
+          animation: textShimmer 1.5s infinite ease-in-out;
+        }
+
         /* Hide Scrollbar globally to remove any right-edge scroll tracks */
         ::-webkit-scrollbar {
           display: none !important;
@@ -1479,7 +1620,7 @@ export default function App() {
         /* ── TEARS ── */
         .vip-tear { display: block; width: 100%; height: 13px; }
         .vip-tear-top {
-          background: #0d1f18;
+          background: #870404;
           clip-path: polygon(
             0% 100%, 1.5% 25%, 3% 85%, 5% 10%, 7% 70%, 9% 5%, 11% 55%,
             13% 88%, 15% 28%, 17% 80%, 19% 12%, 21% 62%, 23% 38%,
@@ -1493,7 +1634,7 @@ export default function App() {
           );
         }
         .vip-tear-bottom {
-          background: #0d1f18;
+          background: #870404;
           clip-path: polygon(
             0% 0%, 1.5% 75%, 3% 15%, 5% 90%, 7% 30%, 9% 95%, 11% 45%,
             13% 12%, 15% 72%, 17% 20%, 19% 88%, 21% 38%, 23% 62%,
@@ -1508,7 +1649,7 @@ export default function App() {
         }
 
         .vip-ticket {
-          background: #0d1f18;
+          background: #870404;
           position: relative;
         }
 
@@ -1542,7 +1683,7 @@ export default function App() {
           position: relative;
           height: 20px;
           overflow: visible;
-          background: #0d1f18;
+          background: #870404;
         }
         .vip-perf.green { background: #00b478; }
 
@@ -1554,7 +1695,7 @@ export default function App() {
           transform: translateY(-50%);
           width: 18px;
           height: 18px;
-          background: #070b0f;
+          background: #300202;
           border-radius: 50%;
           z-index: 2;
         }
@@ -1686,7 +1827,7 @@ export default function App() {
 
         .tear { display: block; width: 100%; height: 10px; }
         .tear-top {
-          background: #121921;
+          background: #870404;
           clip-path: polygon(
             0% 100%, 1.5% 25%, 3% 85%, 5% 10%, 7% 70%, 9% 5%, 11% 55%,
             13% 88%, 15% 28%, 17% 80%, 19% 12%, 21% 62%, 23% 38%,
@@ -1700,7 +1841,7 @@ export default function App() {
           );
         }
         .tear-bottom {
-          background: #121921;
+          background: #870404;
           clip-path: polygon(
             0% 0%, 1.5% 75%, 3% 15%, 5% 90%, 7% 30%, 9% 95%, 11% 45%,
             13% 12%, 15% 72%, 17% 20%, 19% 88%, 21% 38%, 23% 62%,
@@ -1715,7 +1856,7 @@ export default function App() {
         }
 
         .ticket {
-          background: #121921;
+          background: #870404;
           position: relative;
         }
 
@@ -1766,7 +1907,7 @@ export default function App() {
           transform: translateY(-50%);
           width: 18px;
           height: 18px;
-          background: #070b0f;
+          background: #870404;
           border-radius: 50%;
           z-index: 2;
         }
@@ -1894,7 +2035,7 @@ export default function App() {
       `}</style>
       
       {/* Premium FIXED Top Header */}
-      <header className="fixed top-0 left-0 right-0 h-[54px] z-40 bg-gradient-to-r from-[#0a0e17] via-[#0e1420] to-[#0a0e17]/98 backdrop-blur-xl text-white px-4 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.5)] border-b border-white/10 select-none">
+      <header className="fixed top-0 left-0 right-0 h-[54px] z-40 bg-gradient-to-r from-[#870404] via-[#a60606] to-[#870404]/98 backdrop-blur-xl text-white px-4 flex items-center justify-between shadow-[0_4px_30px_rgba(0,0,0,0.5)] border-b border-white/10 select-none">
         {/* Glow Line underneath */}
         <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#E2FF00]/45 to-transparent opacity-80" />
 
@@ -1959,7 +2100,7 @@ export default function App() {
             >
               <div className="flex flex-col flex-1">
                 {/* Menu Header with identical height/styling */}
-                <div className="h-[54px] px-4 flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-[#0a0e17] via-[#0e1420] to-[#0a0e17]/98 relative select-none">
+                <div className="h-[54px] px-4 flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-[#870404] via-[#a60606] to-[#870404]/98 relative select-none">
                   <span className="text-sm font-black tracking-[0.12em] uppercase bg-gradient-to-r from-white to-[#E2FF00] bg-clip-text text-transparent">Negro Suite</span>
                   <button
                     onClick={() => setIsDrawerOpen(false)}
@@ -1987,6 +2128,30 @@ export default function App() {
                     >
                       <Trophy className="w-4 h-4 shrink-0" />
                       All Matches
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setActiveTab("proofs");
+                        setIsDrawerOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs font-bold border-l-4 cursor-pointer ${
+                        activeTab === "proofs"
+                          ? "bg-gradient-to-r from-[#E2FF00] to-[#cbfa00] text-black shadow-[0_0_15px_rgba(226,255,0,0.3)] translate-x-1 font-extrabold border-white/60"
+                          : "text-slate-300 hover:text-white hover:bg-white/5 hover:translate-x-1 border-transparent hover:border-[#E2FF00]/50"
+                      }`}
+                    >
+                      {isMainAdmin ? (
+                        <>
+                          <UserCheck className="w-4 h-4 shrink-0 text-inherit" />
+                          VIP Management
+                        </>
+                      ) : (
+                        <>
+                          <Camera className="w-4 h-4 shrink-0 text-inherit" />
+                          Submit Proof
+                        </>
+                      )}
                     </button>
 
                     {isMainAdmin && (
@@ -2142,7 +2307,7 @@ export default function App() {
                     <div className="flex items-center gap-1.5 px-1 select-none">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] animate-pulse"></span>
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">
-                        Today &amp; Onward Matches
+                        Available Matches
                       </span>
                       <span className="text-[7px] font-black uppercase tracking-widest text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/25 px-1.5 py-0.5 rounded ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
                         Active Fixtures
@@ -2172,19 +2337,19 @@ export default function App() {
                               }}
                               className={`aspect-square rounded-2xl p-2.5 border flex flex-col items-center justify-center text-center gap-2.5 transition-all duration-300 transform active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
                                 isActive 
-                                  ? "border-[#E2FF00] bg-[#111921] shadow-[0_0_20px_rgba(226,255,0,0.25)] scale-[1.03]" 
-                                  : "border-white/10 hover:border-white/18 hover:bg-slate-800/20 bg-gradient-to-b from-[#141b22] to-[#0a0e12]"
+                                  ? "border-[#E2FF00] bg-[#540202] shadow-[0_0_20px_rgba(226,255,0,0.35)] scale-[1.03]" 
+                                  : "border-white/15 bg-[#540202] hover:bg-[#870404] hover:border-white/30"
                               }`}
                             >
                               <span className="absolute top-1 right-1 text-[6px] font-black uppercase tracking-widest text-[#E2FF00]/90 bg-[#E2FF00]/10 border border-[#E2FF00]/20 px-1 py-0.2 rounded-sm">
-                                TODAY
+                                Available
                               </span>
 
                               {isActive && (
                                 <div className="absolute inset-0 bg-gradient-to-tr from-[#E2FF00]/5 to-transparent pointer-events-none" />
                               )}
                               
-                              {renderCategoryIcon(cat.iconName, isActive)}
+                              {renderCategoryIcon(cat.iconName, isActive, getTodayMatchesCount(cat))}
                               
                               <span className={`text-[10px] font-bold leading-tight uppercase tracking-wide transition-colors duration-300 font-sans ${
                                 isActive ? "text-[#E2FF00]" : "text-slate-300 group-hover:text-white"
@@ -2202,7 +2367,7 @@ export default function App() {
                     <div className="flex items-center gap-1.5 px-1 select-none">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        Yesterday &amp; Before Results
+                        Match Results
                       </span>
                       <span className="text-[7px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
                         Finished
@@ -2232,12 +2397,12 @@ export default function App() {
                               }}
                               className={`aspect-square rounded-2xl p-2.5 border flex flex-col items-center justify-center text-center gap-2.5 transition-all duration-300 transform active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
                                 isActive 
-                                  ? "border-emerald-500 bg-[#0e161c] shadow-[0_0_20px_rgba(16,185,129,0.25)] scale-[1.03]" 
-                                  : "border-slate-800 hover:border-slate-700 hover:bg-slate-800/15 bg-gradient-to-b from-[#0e1318] to-[#070a0d] opacity-85 hover:opacity-100"
+                                  ? "border-emerald-500 bg-[#540202] shadow-[0_0_20px_rgba(16,185,129,0.35)] scale-[1.03]" 
+                                  : "border-white/15 bg-[#540202] hover:bg-[#870404] hover:border-white/30"
                               }`}
                             >
-                              <span className="absolute top-1 right-1 text-[6px] font-black uppercase tracking-widest text-emerald-400/90 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded-sm">
-                                RESULTS
+                              <span className="absolute top-1.5 right-1.5 text-[6px] font-black uppercase tracking-widest text-white bg-gradient-to-r from-emerald-500 to-teal-500 px-1.5 py-0.5 rounded-full border border-emerald-400/30 shadow-[0_2px_8px_rgba(16,185,129,0.5)] animate-results-badge z-10">
+                                <span className="animate-results-text">RESULTS</span>
                               </span>
 
                               {isActive && (
@@ -2407,7 +2572,7 @@ export default function App() {
               </button>
             </div>
           </div>
-        ) : (
+        ) : activeTab === "notification" ? (
           /* NOTIFICATION FORM VIEW */
           <div className="w-full space-y-4">
             
@@ -2506,7 +2671,535 @@ export default function App() {
               </div>
             )}
           </div>
-        )}
+        ) : activeTab === "proofs" ? (
+          /* DUAL VIP PROOFS & SUBSCRIPTIONS PAGE */
+          !isMainAdmin ? (
+            /* USER VIEW: SUBMIT PROOF & TRANSACTION HISTORY */
+            <div className="w-full space-y-6">
+              {/* Header */}
+              <div className="border-b border-white/5 pb-4">
+                <h3 className="text-lg font-black text-slate-100 flex items-center gap-2">
+                  <Camera className="w-5 h-5 text-[#E2FF00]" />
+                  Submit Payment Proof
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">Upload a screenshot of your successful transaction receipt or mobile money transfer confirmation slip to activate your VIP access.</p>
+              </div>
+
+              {/* Centered Upload Form */}
+              <div className="max-w-xl mx-auto">
+                {(() => {
+                  const pendingProof = userProofs.find(p => p.categoryId === selectedProofCategory && p.status === "pending");
+                  const rejectedProof = userProofs.find(p => p.categoryId === selectedProofCategory && p.status === "rejected");
+
+                  if (pendingProof) {
+                    return (
+                      <div className="bg-slate-950/80 border border-[#E2FF00]/30 rounded-2xl p-6 flex flex-col items-center text-center gap-4 select-none">
+                        <div className="w-14 h-14 rounded-full bg-[#E2FF00]/10 flex items-center justify-center border border-[#E2FF00]/20">
+                          <Clock className="w-7 h-7 text-[#E2FF00] animate-pulse" />
+                        </div>
+                        <div>
+                          <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00] block mb-1">Receipt Under Review</span>
+                          <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider">
+                            Category: {selectedProofCategory.replace("vip_", "").replace("_today", "").replace("_", " ").toUpperCase()} VIP
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-300 font-medium leading-relaxed font-sans max-w-[320px]">
+                          Your receipt has been submitted successfully and is currently pending verification. Admins review submissions in under 15 minutes.
+                        </p>
+                        <div className="w-full bg-black/40 border border-white/5 p-3 rounded-xl flex items-center justify-between text-xs font-mono">
+                          <span className="text-slate-500">Submitted:</span>
+                          <span className="text-slate-300 font-bold">
+                            {pendingProof.createdAt ? new Date(pendingProof.createdAt).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : "Recently"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setSelectedProofCategory(selectedProofCategory === "vip_cs_today" ? "vip_htft_today" : "vip_cs_today");
+                          }}
+                          className="text-xs text-[#E2FF00] hover:underline cursor-pointer font-bold uppercase tracking-wider mt-2"
+                        >
+                          Check other package status
+                        </button>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="bg-slate-950/80 border border-white/5 rounded-2xl p-5 flex flex-col gap-5 select-none">
+                      <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+                        <Camera className="w-4.5 h-4.5 text-[#E2FF00]" />
+                        <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00]">Upload Screenshot / Slip</span>
+                      </div>
+
+                      {/* Dropdown to select VIP package */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 font-sans">
+                          Select VIP Package Paid For
+                        </label>
+                        <select
+                          value={selectedProofCategory}
+                          onChange={(e) => {
+                            setSelectedProofCategory(e.target.value);
+                            setProofSubmitError(null);
+                            setProofSubmitSuccess(null);
+                          }}
+                          className="w-full bg-black/50 border border-white/10 hover:border-white/20 focus:border-[#E2FF00] rounded-xl p-3.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#E2FF00] transition-all font-medium text-slate-100 cursor-pointer"
+                        >
+                          <option value="vip_cs_today">Correct Score VIP ($1000/week)</option>
+                          <option value="vip_htft_today">HT/FT VIP ($500/week)</option>
+                        </select>
+                      </div>
+
+                      {rejectedProof && (
+                        <div className="text-[10px] text-rose-400 bg-rose-950/20 border border-rose-900/30 p-3 rounded-xl font-medium text-center leading-relaxed">
+                          <span className="font-bold block uppercase tracking-wider text-xs mb-1">❌ Previous Submission Rejected</span>
+                          Your previous receipt upload was rejected by the administrator. Please make sure your new screenshot clearly displays the successful transaction confirmation.
+                        </div>
+                      )}
+
+                      {proofSubmitError && (
+                        <div className="text-[10px] text-rose-400 bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-xl font-medium text-center">
+                          {proofSubmitError}
+                        </div>
+                      )}
+
+                      {proofSubmitSuccess && (
+                        <div className="text-[10px] text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 p-2.5 rounded-xl font-medium text-center">
+                          {proofSubmitSuccess}
+                        </div>
+                      )}
+
+                      {/* Drag-and-drop or select file box */}
+                      {!proofImage ? (
+                        <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 hover:border-[#E2FF00]/40 rounded-xl p-8 bg-black/40 cursor-pointer transition-all duration-300">
+                          <div className="p-3.5 bg-white/5 rounded-full mb-3 text-slate-400">
+                            <Image className="w-6 h-6" />
+                          </div>
+                          <span className="text-[11px] font-bold text-slate-200">Tap to select or drop screenshot</span>
+                          <span className="text-[9px] text-slate-500 font-mono mt-1">Supports PNG, JPG, JPEG (Max 2MB)</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                if (file.size > 2 * 1024 * 1024) {
+                                  setProofSubmitError("Image size must be smaller than 2MB.");
+                                  return;
+                                }
+                                setProofSubmitError(null);
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  setProofImage(reader.result as string);
+                                };
+                                reader.onerror = () => {
+                                  setProofSubmitError("Failed to read image file.");
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </label>
+                      ) : (
+                        <div className="relative border border-white/10 rounded-xl overflow-hidden bg-black/40 p-2 flex flex-col gap-2">
+                          <img
+                            src={proofImage}
+                            alt="Payment Proof Preview"
+                            className="w-full max-h-[180px] object-contain rounded-lg"
+                            referrerPolicy="no-referrer"
+                          />
+                          <button
+                            onClick={() => setProofImage(null)}
+                            className="absolute top-2 right-2 p-1.5 bg-black/80 rounded-full text-slate-300 hover:text-white hover:bg-black border border-white/10 transition-all cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                          <span className="text-[9px] text-slate-500 text-center font-mono font-bold">Preview Selected Screenshot</span>
+                        </div>
+                      )}
+
+                      {proofImage && (
+                        <button
+                          onClick={async () => {
+                            if (!currentUser) return;
+                            setUploadingProof(true);
+                            setProofSubmitError(null);
+                            setProofSubmitSuccess(null);
+                            try {
+                              const proofId = "proof_" + Math.random().toString(36).substring(2, 15);
+                              const priceStr = selectedProofCategory === "vip_cs_today" ? "$1000 USD" : "$500 USD";
+                              await setDoc(doc(db, "proofs", proofId), {
+                                id: proofId,
+                                userId: currentUser.uid,
+                                username: userProfile?.username || currentUser.displayName || currentUser.email?.split("@")[0] || "User",
+                                email: currentUser.email || "",
+                                categoryId: selectedProofCategory,
+                                screenshot: proofImage,
+                                status: "pending",
+                                createdAt: new Date().toISOString(),
+                                amount: priceStr
+                              });
+                              setProofSubmitSuccess("Payment proof uploaded successfully!");
+                              setProofImage(null);
+                            } catch (err: any) {
+                              console.error("Error saving proof:", err);
+                              setProofSubmitError("Failed to submit: " + err.message);
+                            } finally {
+                              setUploadingProof(false);
+                            }
+                          }}
+                          disabled={uploadingProof}
+                          className="w-full bg-[#E2FF00] hover:bg-[#c2db00] disabled:bg-slate-800 disabled:text-slate-500 text-black font-extrabold text-xs py-3.5 rounded-xl shadow-lg transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          {uploadingProof ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                          {uploadingProof ? "Submitting Proof..." : "Submit Proof as Payment Receipt"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* USER TRANSACTION HISTORY LIST */}
+              <div className="bg-[#121921]/40 border border-white/5 rounded-2xl p-5 select-none">
+                <div className="flex items-center gap-2 border-b border-white/5 pb-3.5 mb-4">
+                  <Clock className="w-4.5 h-4.5 text-[#E2FF00]" />
+                  <span className="text-xs font-black uppercase tracking-wider text-slate-100">My Uploaded Receipts & Statuses</span>
+                </div>
+
+                {userProofs.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 text-xs font-mono">
+                    You have not uploaded any payment proofs yet.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {userProofs.map((proof) => {
+                      return (
+                        <div key={proof.id} className="bg-black/30 border border-white/5 rounded-xl p-3.5 flex flex-col gap-3 relative overflow-hidden">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-mono font-bold text-slate-500 uppercase">
+                              {proof.createdAt ? new Date(proof.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : "Recently"}
+                            </span>
+                            <span
+                              className={`text-[8px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                proof.status === "approved"
+                                  ? "bg-emerald-950/20 text-emerald-400 border-emerald-500/20"
+                                  : proof.status === "rejected"
+                                  ? "bg-rose-950/20 text-rose-400 border-rose-500/20"
+                                  : "bg-amber-950/20 text-[#E2FF00] border-[#E2FF00]/20 animate-pulse"
+                              }`}
+                            >
+                              {proof.status === "approved" ? "Approved ✓" : proof.status === "rejected" ? "Rejected ✗" : "Pending ⏳"}
+                            </span>
+                          </div>
+
+                          <div className="space-y-1.5 text-xs font-sans">
+                            <div className="flex justify-between">
+                              <span className="text-slate-500 text-[11px]">VIP Package:</span>
+                              <span className="font-bold text-slate-200 uppercase">
+                                {proof.categoryId.replace("vip_", "").replace("_today", "").replace("_", " ")} VIP
+                              </span>
+                            </div>
+                            {proof.amount && (
+                              <div className="flex justify-between">
+                                <span className="text-slate-500 text-[11px]">Amount Listed:</span>
+                                <span className="text-emerald-400 font-extrabold">{proof.amount}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {proof.screenshot && (
+                            <div className="relative group border border-white/5 rounded-lg overflow-hidden bg-black/40 aspect-video flex items-center justify-center h-24">
+                              <img
+                                src={proof.screenshot}
+                                alt="Your Uploaded Screenshot"
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div 
+                                onClick={() => setViewingScreenshot(proof.screenshot)}
+                                className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-[#E2FF00]" />
+                                <span className="text-[10px] font-bold text-white uppercase tracking-wider">Expand</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Lightbox / Screenshot Modal viewer for past user proofs */}
+              <AnimatePresence>
+                {viewingScreenshot && (
+                  <div className="fixed inset-0 bg-black/95 z-55 flex flex-col items-center justify-center p-4">
+                    <motion.div
+                      initial={{ scale: 0.95, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.95, opacity: 0 }}
+                      className="relative max-w-full max-h-full flex flex-col gap-4"
+                    >
+                      <button
+                        onClick={() => setViewingScreenshot(null)}
+                        className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all cursor-pointer flex items-center justify-center"
+                      >
+                        <X className="w-6 h-6" />
+                      </button>
+                      
+                      <img
+                        src={viewingScreenshot}
+                        alt="Full Payment Receipt"
+                        className="max-w-[90vw] max-h-[80vh] object-contain rounded-2xl shadow-2xl border border-white/10"
+                        referrerPolicy="no-referrer"
+                      />
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+          ) : (
+            /* ADMIN VIEW: VIP MANAGEMENT DASHBOARD */
+            <div className="w-full space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-4">
+                <div>
+                  <h3 className="text-lg font-black text-slate-100 flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-[#E2FF00]" />
+                    VIP Management Dashboard
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">Review user payment screenshots and manually manage subscriber access tiers.</p>
+                </div>
+                
+                <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 self-start">
+                  <button
+                    onClick={() => setAdminSubTab("pending")}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      adminSubTab === "pending"
+                        ? "bg-[#E2FF00] text-black shadow-[0_2px_8px_rgba(226,255,0,0.15)]"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    Pending Proofs ({allProofs.filter(p => p.status === "pending").length})
+                  </button>
+                  <button
+                    onClick={() => setAdminSubTab("users")}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      adminSubTab === "users"
+                        ? "bg-[#E2FF00] text-black shadow-[0_2px_8px_rgba(226,255,0,0.15)]"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    Manage Users ({allUsers.length})
+                  </button>
+                </div>
+              </div>
+
+              {adminSubTab === "pending" ? (
+                /* PENDING PROOFS SUBTAB */
+                <div className="space-y-4">
+                  {allProofs.length === 0 ? (
+                    <div className="bg-[#121921]/40 border border-white/5 rounded-2xl p-12 text-center text-slate-400">
+                      <Clock className="w-8 h-8 text-slate-600 mx-auto mb-3 animate-pulse" />
+                      <p className="font-bold text-xs uppercase tracking-wider text-slate-300">No Payment Proofs Submitted</p>
+                      <p className="text-[10px] text-slate-500 mt-1 font-mono">User screenshot uploads will appear here in real-time.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {allProofs.map((proof) => {
+                        const isPending = proof.status === "pending";
+                        return (
+                          <div
+                            key={proof.id}
+                            className={`bg-[#121921]/90 border rounded-2xl p-4 flex flex-col gap-3.5 transition-all relative overflow-hidden ${
+                              isPending 
+                                ? "border-[#E2FF00]/20 shadow-[0_0_15px_rgba(226,255,0,0.03)]" 
+                                : "border-white/5"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider">
+                                {new Date(proof.createdAt).toLocaleString()}
+                              </span>
+                              <span
+                                className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                  proof.status === "approved"
+                                    ? "bg-emerald-950/20 text-emerald-400 border-emerald-500/20"
+                                    : proof.status === "rejected"
+                                    ? "bg-rose-950/20 text-rose-400 border-rose-500/20"
+                                    : "bg-amber-950/20 text-[#E2FF00] border-[#E2FF00]/20 animate-pulse"
+                                }`}
+                              >
+                                {proof.status}
+                              </span>
+                            </div>
+
+                            <div className="bg-black/30 p-3 rounded-xl border border-white/5 space-y-1.5 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-slate-500 font-mono">Username:</span>
+                                <span className="font-bold text-slate-200">{proof.username}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500 font-mono">Email:</span>
+                                <span className="text-slate-300 font-mono select-all">{proof.email}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500 font-mono">Category:</span>
+                                <span className="text-[#E2FF00] font-black uppercase font-sans tracking-wide">
+                                  {proof.categoryId.replace("vip_", "").replace("_today", "").replace("_", " ")} VIP
+                                </span>
+                              </div>
+                              {proof.amount && (
+                                <div className="flex justify-between border-t border-white/5 pt-1.5 mt-1.5">
+                                  <span className="text-slate-500 font-mono">Paid Amount:</span>
+                                  <span className="text-emerald-400 font-extrabold">{proof.amount}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {proof.screenshot && (
+                              <div className="relative group border border-white/10 rounded-xl overflow-hidden bg-black/50 aspect-video flex items-center justify-center">
+                                <img
+                                  src={proof.screenshot}
+                                  alt="Payment Receipt Screenshot"
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <div 
+                                  onClick={() => setViewingScreenshot(proof.screenshot)}
+                                  className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                >
+                                  <Eye className="w-4 h-4 text-[#E2FF00]" />
+                                  <span className="text-xs font-black text-white uppercase tracking-wider">View Full Size</span>
+                                </div>
+                              </div>
+                            )}
+
+                            {isPending && (
+                              <div className="grid grid-cols-2 gap-2 mt-1">
+                                <button
+                                  onClick={() => handleRejectProof(proof.id)}
+                                  className="bg-rose-950/20 hover:bg-rose-900/30 text-rose-400 border border-rose-900/20 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                  Reject Proof
+                                </button>
+                                <button
+                                  onClick={() => handleApproveProof(proof)}
+                                  className="bg-[#E2FF00] hover:bg-[#c2db00] text-black py-2.5 rounded-xl text-xs font-extrabold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <CheckCircle className="w-4 h-4" />
+                                  Approve VIP
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* MANAGE USERS SUBTAB */
+                <div className="space-y-4">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={userSearchQuery}
+                      onChange={(e) => setUserSearchQuery(e.target.value)}
+                      placeholder="Search users by email or username..."
+                      className="w-full bg-[#070b0f] border border-white/10 hover:border-white/20 focus:border-[#E2FF00] rounded-xl p-3.5 pl-4 text-xs focus:outline-none focus:ring-1 focus:ring-[#E2FF00] transition-all font-medium text-slate-100 placeholder:text-slate-500"
+                    />
+                  </div>
+
+                  <div className="bg-[#121921]/95 border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+                    {allUsers.length === 0 ? (
+                      <div className="p-8 text-center text-slate-500 text-xs">
+                        Loading users list...
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-white/5">
+                        {allUsers
+                          .filter(user => 
+                            user.email?.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                            user.username?.toLowerCase().includes(userSearchQuery.toLowerCase())
+                          )
+                          .map((u) => {
+                            return (
+                              <div key={u.uid} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-9 h-9 rounded-full bg-gradient-to-r from-red-500 to-amber-500 flex items-center justify-center text-black font-black text-xs uppercase shadow-md shrink-0">
+                                    {u.username?.[0] || "U"}
+                                  </div>
+                                  <div className="flex flex-col min-w-0">
+                                    <span className="text-xs font-bold text-slate-200 truncate">{u.username || "User"}</span>
+                                    <span className="text-[10px] text-slate-500 font-mono truncate select-all">{u.email}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {[
+                                    { id: "vip_cs_today", label: "Correct Score VIP" },
+                                    { id: "vip_htft_today", label: "HT/FT VIP" }
+                                  ].map((cat) => {
+                                    const isActive = u.subscriptions?.[cat.id] === true;
+                                    return (
+                                      <button
+                                        key={cat.id}
+                                        onClick={() => handleToggleUserSubscription(u, cat.id)}
+                                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border transition-all cursor-pointer flex items-center gap-1 ${
+                                          isActive
+                                            ? "bg-emerald-950/20 text-emerald-400 border-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.1)]"
+                                            : "bg-slate-900/40 text-slate-500 border-white/5 hover:border-white/10 hover:text-slate-300"
+                                        }`}
+                                      >
+                                        {isActive ? <Check className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                                        {cat.label}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* FULL RESOLUTION SCREENSHOT LIGHTBOX/VIEWER MODAL */}
+              <AnimatePresence>
+                {viewingScreenshot && (
+                  <div className="fixed inset-0 bg-black/95 z-55 flex flex-col items-center justify-center p-4">
+                    <motion.div
+                      initial={{ scale: 0.95, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.95, opacity: 0 }}
+                      className="relative max-w-full max-h-full flex flex-col gap-4"
+                    >
+                      <button
+                        onClick={() => setViewingScreenshot(null)}
+                        className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all cursor-pointer flex items-center justify-center"
+                      >
+                        <X className="w-6 h-6" />
+                      </button>
+                      
+                      <img
+                        src={viewingScreenshot}
+                        alt="Full Payment Receipt"
+                        className="max-w-[90vw] max-h-[80vh] object-contain rounded-2xl shadow-2xl border border-white/10"
+                        referrerPolicy="no-referrer"
+                      />
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+          )
+        ) : null}
 
       </main>
 
@@ -2520,15 +3213,15 @@ export default function App() {
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 220 }}
             style={{
-              backgroundImage: `linear-gradient(rgba(10, 15, 23, 0.72), rgba(10, 15, 23, 0.95)), url("https://i.ibb.co/NdsrmZx0/2d4e211d-777e-4801-bd34-cdb12a906b44.jpg")`,
+              backgroundImage: `linear-gradient(rgba(48, 2, 2, 0.88), rgba(48, 2, 2, 0.97)), url("https://i.ibb.co/NdsrmZx0/2d4e211d-777e-4801-bd34-cdb12a906b44.jpg")`,
               backgroundSize: "cover",
               backgroundPosition: "center",
               backgroundAttachment: "fixed"
             }}
-            className="fixed inset-0 z-50 bg-[#070b0f] overflow-y-auto flex flex-col items-center pb-12 pt-[68px]"
+            className="fixed inset-0 z-50 bg-[#300202] overflow-y-auto flex flex-col items-center pb-12 pt-[54px]"
           >
             {/* APK Fixed Header with Back Arrow on Left Edge */}
-            <div className="fixed top-0 left-0 right-0 h-[54px] bg-gradient-to-r from-[#0a0e17] via-[#0e1420] to-[#0a0e17]/98 backdrop-blur-xl text-white px-4 flex items-center justify-between border-b border-white/10 select-none shadow-[0_4px_30px_rgba(0,0,0,0.5)] z-50">
+            <div className="fixed top-0 left-0 right-0 h-[54px] bg-gradient-to-r from-[#870404] via-[#a60606] to-[#870404]/98 backdrop-blur-xl text-white px-4 flex items-center justify-between border-b border-white/10 select-none shadow-[0_4px_30px_rgba(0,0,0,0.5)] z-50">
               {/* Glow Line underneath */}
               <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#E2FF00]/45 to-transparent opacity-80" />
 
@@ -2552,8 +3245,8 @@ export default function App() {
             </div>
 
             {/* Ticket List Body */}
-            <div className="w-full max-w-[480px] px-4 flex flex-col items-center gap-0 mt-4">
-              {activeCategory.id.startsWith("vip_") && activeCategory.id.includes("today") && !isMainAdmin ? (
+            <div className="w-full max-w-[480px] px-4 flex flex-col items-center gap-0 mt-2">
+              {activeCategory.id.startsWith("vip_") && activeCategory.id.includes("today") && !isSubscribedToActiveCategory ? (
                 // PREMIUM PAYMENT GATEWAY & CONVERSION WIZARD
                 (() => {
                   let planName = "Elite VIP Weekly Access";
@@ -2772,21 +3465,153 @@ export default function App() {
                           </div>
                         </div>
                       )}
+
+                      {/* PROOF OF PAYMENT SCREENSHOT UPLOADER */}
+                      {(() => {
+                        const pendingProof = userProofs.find(p => p.categoryId === activeCategory.id && p.status === "pending");
+                        const rejectedProof = userProofs.find(p => p.categoryId === activeCategory.id && p.status === "rejected");
+
+                        if (pendingProof) {
+                          return (
+                            <div className="w-full max-w-[360px] bg-slate-950/80 border border-[#E2FF00]/30 rounded-2xl p-5 flex flex-col items-center text-center gap-3 select-none mb-6">
+                              <div className="w-12 h-12 rounded-full bg-[#E2FF00]/10 flex items-center justify-center border border-[#E2FF00]/20">
+                                <Clock className="w-6 h-6 text-[#E2FF00] animate-pulse" />
+                              </div>
+                              <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00]">Proof Under Review</span>
+                              <p className="text-[11px] text-slate-300 font-medium leading-relaxed font-sans">
+                                Your screenshot has been submitted and is currently pending verification by our administrators. This process typically takes under 15 minutes.
+                              </p>
+                              <div className="w-full bg-black/40 border border-white/5 p-3 rounded-xl flex items-center justify-between text-xs mt-2">
+                                <span className="text-slate-500 font-mono">Submitted:</span>
+                                <span className="text-slate-300 font-mono font-bold">
+                                  {pendingProof.createdAt ? new Date(pendingProof.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Recently"}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="w-full max-w-[360px] bg-slate-950/80 border border-white/5 rounded-2xl p-5 flex flex-col gap-4 select-none mb-6">
+                            <div className="flex items-center gap-2 border-b border-white/5 pb-3">
+                              <Camera className="w-4.5 h-4.5 text-[#E2FF00]" />
+                              <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00]">Submit Payment Screenshot</span>
+                            </div>
+
+                            {rejectedProof && (
+                              <div className="text-[10px] text-rose-400 bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-xl font-medium text-center">
+                                <span className="font-bold block uppercase tracking-wider text-xs mb-1">❌ Previous Submission Rejected</span>
+                                The administrator rejected your payment proof. Please make sure the screenshot clearly displays the successful transaction confirmation.
+                              </div>
+                            )}
+
+                            {proofSubmitError && (
+                              <div className="text-[10px] text-rose-400 bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-xl font-medium text-center">
+                                {proofSubmitError}
+                              </div>
+                            )}
+
+                            {proofSubmitSuccess && (
+                              <div className="text-[10px] text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 p-2.5 rounded-xl font-medium text-center">
+                                {proofSubmitSuccess}
+                              </div>
+                            )}
+
+                            {/* Drag-and-drop or select file box */}
+                            {!proofImage ? (
+                              <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 hover:border-[#E2FF00]/40 rounded-xl p-6 bg-black/40 cursor-pointer transition-all duration-300">
+                                <div className="p-3 bg-white/5 rounded-full mb-2.5 text-slate-400">
+                                  <Image className="w-5 h-5" />
+                                </div>
+                                <span className="text-[11px] font-bold text-slate-200">Tap to select or drop screenshot</span>
+                                <span className="text-[9px] text-slate-500 font-mono mt-1">Supports PNG, JPG, JPEG</span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      if (file.size > 2 * 1024 * 1024) {
+                                        setProofSubmitError("Image size must be smaller than 2MB.");
+                                        return;
+                                      }
+                                      setProofSubmitError(null);
+                                      const reader = new FileReader();
+                                      reader.onload = () => {
+                                        setProofImage(reader.result as string);
+                                      };
+                                      reader.onerror = () => {
+                                        setProofSubmitError("Failed to read image file.");
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }
+                                  }}
+                                />
+                              </label>
+                            ) : (
+                              <div className="relative border border-white/10 rounded-xl overflow-hidden bg-black/40 p-2 flex flex-col gap-2">
+                                <img
+                                  src={proofImage}
+                                  alt="Payment Proof Preview"
+                                  className="w-full max-h-[160px] object-contain rounded-lg"
+                                  referrerPolicy="no-referrer"
+                                />
+                                <button
+                                  onClick={() => setProofImage(null)}
+                                  className="absolute top-2 right-2 p-1.5 bg-black/80 rounded-full text-slate-300 hover:text-white hover:bg-black border border-white/10 transition-all cursor-pointer"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                                <span className="text-[9px] text-slate-500 text-center font-mono font-bold">Preview Selected Screenshot</span>
+                              </div>
+                            )}
+
+                            {proofImage && (
+                              <button
+                                onClick={async () => {
+                                  if (!currentUser) return;
+                                  setUploadingProof(true);
+                                  setProofSubmitError(null);
+                                  setProofSubmitSuccess(null);
+                                  try {
+                                    const proofId = "proof_" + Math.random().toString(36).substring(2, 15);
+                                    await setDoc(doc(db, "proofs", proofId), {
+                                      id: proofId,
+                                      userId: currentUser.uid,
+                                      username: userProfile?.username || currentUser.displayName || currentUser.email?.split("@")[0] || "User",
+                                      email: currentUser.email || "",
+                                      categoryId: activeCategory.id,
+                                      screenshot: proofImage,
+                                      status: "pending",
+                                      createdAt: new Date().toISOString(),
+                                      amount: `${currentCountry.symbol} ${formattedPrice}`
+                                    });
+                                    setProofSubmitSuccess("Payment proof uploaded successfully!");
+                                    setProofImage(null);
+                                  } catch (err: any) {
+                                    console.error("Error saving proof:", err);
+                                    setProofSubmitError("Failed to submit: " + err.message);
+                                  } finally {
+                                    setUploadingProof(false);
+                                  }
+                                }}
+                                disabled={uploadingProof}
+                                className="w-full bg-[#E2FF00] hover:bg-[#c2db00] disabled:bg-slate-800 disabled:text-slate-500 text-black font-extrabold text-xs py-3.5 rounded-xl shadow-lg transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                {uploadingProof ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                {uploadingProof ? "Submitting Proof..." : "Submit Proof as Payment Receipt"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()
               ) : (
                 // NORMAL TICKETS / FREE TIPS / EXPIRED VIP MATCH LIST
                 <>
-                  <div className="w-full max-w-[350px] px-2 mb-3 flex items-center justify-between">
-                    <span className="text-[10px] font-mono font-black uppercase tracking-wider text-[#E2FF00] bg-black/45 px-2.5 py-1 rounded-md border border-white/5">
-                      Category: {activeCategory.title}
-                    </span>
-                    <span className="text-[10px] font-mono font-bold text-slate-400">
-                      {activeCategory.tickets.length} Tickets Active
-                    </span>
-                  </div>
-
                   {activeCategory.tickets.length === 0 && (
                     <div className="w-full max-w-[350px] bg-slate-900/40 border border-dashed border-white/10 rounded-2xl py-12 px-6 text-center text-slate-400 space-y-2.5 select-none mb-4">
                       <div className="w-10 h-10 rounded-full bg-slate-950 flex items-center justify-center mx-auto border border-white/5">
@@ -2802,64 +3627,80 @@ export default function App() {
                   )}
 
                   {activeCategory.tickets.map((ticket, index) => {
-                    const isVip = activeCategory.id.startsWith("vip_");
+                    // Filter matches based on the activeCategory type
+                    const filteredMatchesWithIndices = (ticket.matches || []).map((match, mIdx) => ({
+                      match,
+                      originalIdx: mIdx,
+                    })).filter(({ match, originalIdx }) => {
+                      const status = match.status || getMatchStatus(ticket.date, originalIdx, index);
+                      if (activeCategory.id.includes("today")) {
+                        return status === "pending";
+                      } else if (activeCategory.id.includes("results")) {
+                        return status === "win" || status === "lose";
+                      }
+                      return true;
+                    });
 
-                    if (isVip) {
-                      return (
-                        <div key={index} className="vip-ticket-wrap w-full max-w-[340px] mb-2">
-                          <span className="vip-tear vip-tear-top"></span>
-                          <div className="vip-ticket">
+                    // If no matches match criteria, hide this ticket block (unless admin mode so they can add)
+                    if (filteredMatchesWithIndices.length === 0 && !isMainAdmin) {
+                      return null;
+                    }
 
-                            {/* DATE HERO */}
-                            <div className="vip-date-hero">
-                              <span className="vip-date-big">{ticket.date}</span>
-                            </div>
+                    return (
+                      <div key={index} className="vip-ticket-wrap w-full max-w-[340px] mb-2">
+                        <span className="vip-tear vip-tear-top"></span>
+                        <div className="vip-ticket">
 
-                            {/* perforation */}
-                            <div className="vip-perf green">
-                              <hr className="vip-perf-line" />
-                            </div>
+                          {/* DATE HERO */}
+                          <div className="vip-date-hero">
+                            <span className="vip-date-big">{ticket.date}</span>
+                          </div>
 
-                            {/* MATCHES */}
-                            <div className="vip-matches">
-                              {ticket.matches.map((match, mIdx) => (
-                                <React.Fragment key={mIdx}>
+                          {/* perforation */}
+                          <div className="vip-perf green">
+                            <hr className="vip-perf-line" />
+                          </div>
+
+                          {/* MATCHES */}
+                          <div className="vip-matches">
+                            {filteredMatchesWithIndices.length === 0 ? (
+                              <div className="py-4 text-center text-[10px] text-slate-400 font-mono">
+                                No active matches in this group
+                              </div>
+                            ) : (
+                              filteredMatchesWithIndices.map(({ match, originalIdx }, fIdx) => (
+                                <React.Fragment key={originalIdx}>
                                   <div className="vip-match-row relative group/row">
                                     <div className="vip-num">{match.num}</div>
                                     <div className="vip-match-info">
                                       <div className="vip-match-name">{match.home} vs {match.away}</div>
                                       <div className="vip-pick flex items-center gap-1.5 flex-wrap">
                                         <span>{formatTip(match.score)}</span>
-                                        {match.time && (
-                                          <span className="text-[8px] font-mono opacity-80 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-slate-300">
-                                            🕒 {match.time} EAT
-                                          </span>
-                                        )}
                                       </div>
                                     </div>
-                                    <div className="result-group flex items-center gap-1.5">          
-                                      {renderMatchStatusBadge(match.status || getMatchStatus(ticket.date, mIdx, index))}
+                                    <div className="result-group flex items-center gap-1.5 shrink-0 select-none">          
+                                      {renderMatchStatusBadge(match.status || getMatchStatus(ticket.date, originalIdx, index))}
                                       <span className="vip-odds">{match.odds}</span>
                                     </div>
 
                                     {isMainAdmin && (
                                       <div className="flex items-center gap-1 ml-2 pl-1.5 border-l border-white/10 shrink-0">
                                         <button 
-                                          onClick={() => startEditMatch(activeCategory.id, index, mIdx, match)}
+                                          onClick={() => startEditMatch(activeCategory.id, index, originalIdx, match)}
                                           className="p-1 rounded bg-[#E2FF00]/10 hover:bg-[#E2FF00]/20 text-[#E2FF00] transition-all cursor-pointer"
                                           title="Edit Match"
                                         >
                                           <Edit3 className="w-3.5 h-3.5" />
                                         </button>
                                         <button 
-                                          onClick={() => duplicateMatch(activeCategory.id, index, mIdx)}
+                                          onClick={() => duplicateMatch(activeCategory.id, index, originalIdx)}
                                           className="p-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 transition-all cursor-pointer"
                                           title="Duplicate Match"
                                         >
                                           <Copy className="w-3.5 h-3.5" />
                                         </button>
                                         <button 
-                                          onClick={() => deleteMatch(activeCategory.id, index, mIdx)}
+                                          onClick={() => deleteMatch(activeCategory.id, index, originalIdx)}
                                           className="p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-all cursor-pointer"
                                           title="Delete Match"
                                         >
@@ -2868,106 +3709,14 @@ export default function App() {
                                       </div>
                                     )}
                                   </div>
-                                  {mIdx < ticket.matches.length - 1 && <hr className="vip-row-sep" />}
+                                  {fIdx < filteredMatchesWithIndices.length - 1 && <hr className="vip-row-sep" />}
                                 </React.Fragment>
-                              ))}
-                            </div>
-
-                            {isMainAdmin && (
-                              <div className="mt-3.5 pt-3 border-t border-white/10 flex items-center justify-between gap-2.5 px-1 pb-1">
-                                <button
-                                  onClick={() => startAddMatch(activeCategory.id, index)}
-                                  className="flex-1 py-1 px-3 text-[10px] font-black uppercase tracking-wider text-black bg-[#E2FF00] rounded-lg hover:scale-[1.01] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                                >
-                                  <Plus className="w-3.5 h-3.5" strokeWidth={3} />
-                                  Add Match
-                                </button>
-                                <button
-                                  onClick={() => deleteTicketGroup(activeCategory.id, index)}
-                                  className="py-1 px-3 text-[10px] font-black uppercase tracking-wider text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg hover:bg-red-500/20 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  Delete Group
-                                </button>
-                              </div>
+                              ))
                             )}
-
-                          </div>
-                          <span className="vip-tear vip-tear-bottom"></span>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div key={index} className="ticket-wrap w-full max-w-[350px] mb-2">
-                        <span className="tear tear-top"></span>
-                        <div className="ticket bg-slate-900/95 border-x border-white/5 py-2.5 px-3 rounded-xl flex flex-col">
-
-                          {/* DATE HERO */}
-                          <div className="date-hero">
-                            <span className="date-big">{ticket.date}</span>
-                          </div>
-
-                          {/* Perforation */}
-                          <div className="perf yellow">
-                            <hr className="perf-line" />
-                          </div>
-
-                          {/* Matches List */}
-                          <div className="matches flex flex-col gap-1.5">
-                            {ticket.matches.map((match, mIdx) => (
-                              <React.Fragment key={mIdx}>
-                                <div className="match-row flex items-center justify-between gap-2.5 py-1 relative group/row">
-                                  <div className="num font-mono text-xs font-bold text-slate-400 bg-slate-800/40 w-5 h-5 flex items-center justify-center rounded">{match.num}</div>
-                                  <div className="match-info flex-1 min-w-0">
-                                    <div className="match-name text-xs font-black text-white truncate font-sans uppercase tracking-wide">{match.home} vs {match.away}</div>
-                                    <div className="pick flex items-center gap-1.5 flex-wrap">
-                                      <span>{formatTip(match.score)}</span>
-                                      {match.time && (
-                                        <span className="text-[8px] font-mono opacity-80 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-slate-300">
-                                          🕒 {match.time} EAT
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div className="result-group flex items-center gap-2">          
-                                    {renderMatchStatusBadge(match.status || getMatchStatus(ticket.date, mIdx, index))}
-                                    <span className="odds font-mono text-xs font-bold text-[#E2FF00] border border-[#E2FF00]/30 rounded-full px-1.5 py-0.5 bg-[#E2FF00]/5">{match.odds}</span>
-                                  </div>
-
-                                  {isMainAdmin && (
-                                    <div className="flex items-center gap-1 ml-2 pl-1.5 border-l border-white/10 shrink-0">
-                                      <button 
-                                        onClick={() => startEditMatch(activeCategory.id, index, mIdx, match)}
-                                        className="p-1 rounded bg-[#E2FF00]/10 hover:bg-[#E2FF00]/20 text-[#E2FF00] transition-all cursor-pointer"
-                                        title="Edit Match"
-                                      >
-                                        <Edit3 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button 
-                                        onClick={() => duplicateMatch(activeCategory.id, index, mIdx)}
-                                        className="p-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300 transition-all cursor-pointer"
-                                        title="Duplicate Match"
-                                      >
-                                        <Copy className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button 
-                                        onClick={() => deleteMatch(activeCategory.id, index, mIdx)}
-                                        className="p-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 transition-all cursor-pointer"
-                                        title="Delete Match"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                                {mIdx < ticket.matches.length - 1 && <hr className="row-sep border-white/5" />}
-                              </React.Fragment>
-                            ))}
                           </div>
 
                           {isMainAdmin && (
-                            <div className="mt-3.5 pt-3 border-t border-white/5 flex items-center justify-between gap-2.5">
+                            <div className="mt-3.5 pt-3 border-t border-white/10 flex items-center justify-between gap-2.5 px-1 pb-1">
                               <button
                                 onClick={() => startAddMatch(activeCategory.id, index)}
                                 className="flex-1 py-1 px-3 text-[10px] font-black uppercase tracking-wider text-black bg-[#E2FF00] rounded-lg hover:scale-[1.01] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-1.5"
@@ -2986,7 +3735,7 @@ export default function App() {
                           )}
 
                         </div>
-                        <span className="tear tear-bottom"></span>
+                        <span className="vip-tear vip-tear-bottom"></span>
                       </div>
                     );
                   })}

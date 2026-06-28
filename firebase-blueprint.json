@@ -9,7 +9,11 @@
         "username": { "type": "string" },
         "email": { "type": "string" },
         "role": { "type": "string", "enum": ["admin", "user"] },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "subscriptions": {
+          "type": "object",
+          "description": "Active VIP subscriptions map, e.g. { 'vip_cs_today': true }"
+        }
       },
       "required": ["uid", "username", "email", "role", "createdAt"]
     },
@@ -27,6 +31,23 @@
         }
       },
       "required": ["id", "title", "iconName", "tickets"]
+    },
+    "Proof": {
+      "title": "Payment Proof",
+      "description": "Payment proof screenshot submitted by user for VIP activation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "screenshot": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string" },
+        "amount": { "type": "string" }
+      },
+      "required": ["id", "userId", "username", "email", "categoryId", "screenshot", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -37,6 +58,10 @@
     "/categories/{categoryId}": {
       "schema": "Category",
       "description": "Match tip categories containing matches data"
+    },
+    "/proofs/{proofId}": {
+      "schema": "Proof",
+      "description": "Payment proof submissions"
     }
   }
 }
