@@ -668,7 +668,7 @@ export default function WhatsAppChat({
             <form 
               id="chat-message-form"
               onSubmit={handleSend} 
-              className="p-3 bg-[#870404] flex items-end gap-2.5 shrink-0 relative z-20"
+              className="py-0 px-3 bg-[#870404] flex items-end gap-2.5 shrink-0 relative z-20"
             >
               {/* Left trigger buttons */}
               <div className="flex items-center gap-1.5 text-white/90 mb-1">
