@@ -72,6 +72,36 @@ import {
 
 type ActiveTab = "notification" | "setting" | "correct_score" | "proofs";
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+function handleFirestoreError(error: any, operationType: string, path: string | null) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 export default function App() {
   // Auth states
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -170,6 +200,27 @@ export default function App() {
     ? [...freeCategories, ...vipCategories].find(c => c.id === openedCategoryId) || null
     : null;
 
+  const [isStandaloneWindow, setIsStandaloneWindow] = useState(false);
+
+  // Parse standalone mode on startup
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const isStandalone = params.get("standalone") === "true";
+    const categoryParam = params.get("category");
+    if (isStandalone || categoryParam) {
+      setIsStandaloneWindow(true);
+      if (categoryParam) {
+        setOpenedCategoryId(categoryParam);
+        // Deduce toggleMode from category ID
+        if (categoryParam.startsWith("vip_")) {
+          setToggleMode("vip");
+        } else {
+          setToggleMode("free");
+        }
+      }
+    }
+  }, []);
+
   // Payment and paywall states
   const [selectedCountryCode, setSelectedCountryCode] = useState<string>("UG");
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({
@@ -264,6 +315,7 @@ export default function App() {
     }, (error) => {
       console.error("Error listening to categories: ", error);
       setFirestoreError(error.message || String(error));
+      handleFirestoreError(error, "list", "categories");
     });
 
     return () => unsubscribe();
@@ -284,6 +336,7 @@ export default function App() {
       }
     }, (err) => {
       console.error("Error loading user proofs:", err);
+      handleFirestoreError(err, "list", "proofs");
     });
     return () => unsubscribe();
   }, [currentUser]);
@@ -306,6 +359,7 @@ export default function App() {
       }
     }, (err) => {
       console.error("Error loading all proofs for admin:", err);
+      handleFirestoreError(err, "list", "proofs");
     });
 
     const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
@@ -316,6 +370,7 @@ export default function App() {
       }
     }, (err) => {
       console.error("Error loading all users for admin:", err);
+      handleFirestoreError(err, "list", "users");
     });
 
     return () => {
@@ -2117,17 +2172,15 @@ export default function App() {
                   <nav className="space-y-1.5">
                     <button
                       onClick={() => {
-                        setActiveTab("correct_score");
+                        const targetCategory = openedCategoryId || (toggleMode === "free" ? selectedFreeCat : selectedVipCat);
+                        const url = `${window.location.origin}${window.location.pathname}?standalone=true&category=${targetCategory}`;
+                        window.open(url, "_blank");
                         setIsDrawerOpen(false);
                       }}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs font-bold border-l-4 cursor-pointer ${
-                        activeTab === "correct_score"
-                          ? "bg-gradient-to-r from-[#E2FF00] to-[#cbfa00] text-black shadow-[0_0_15px_rgba(226,255,0,0.3)] translate-x-1 font-extrabold border-white/60"
-                          : "text-slate-300 hover:text-white hover:bg-white/5 hover:translate-x-1 border-transparent hover:border-[#E2FF00]/50"
-                      }`}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-xs font-bold border-l-4 cursor-pointer text-slate-300 hover:text-white hover:bg-white/5 hover:translate-x-1 border-transparent hover:border-[#E2FF00]/50"
                     >
-                      <Trophy className="w-4 h-4 shrink-0" />
-                      All Matches
+                      <Trophy className="w-4 h-4 shrink-0 text-[#E2FF00]" />
+                      All Matches Activity
                     </button>
 
                     <button
@@ -3228,7 +3281,18 @@ export default function App() {
               <div className="flex items-center gap-3">
                 <button
                   id="apk-back-btn"
-                  onClick={() => setOpenedCategoryId(null)}
+                  onClick={() => {
+                    if (isStandaloneWindow) {
+                      try {
+                        window.close();
+                      } catch (e) {
+                        console.error(e);
+                      }
+                      setOpenedCategoryId(null);
+                    } else {
+                      setOpenedCategoryId(null);
+                    }
+                  }}
                   className="p-1.5 rounded-lg text-slate-300 hover:text-[#E2FF00] hover:bg-white/5 active:scale-95 transition-all duration-300 cursor-pointer flex items-center justify-center"
                   aria-label="Go back"
                 >
@@ -3238,9 +3302,23 @@ export default function App() {
                   {activeCategory.title}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 bg-[#E2FF00]/10 px-2.5 py-1 rounded-full border border-[#E2FF00]/20">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] animate-pulse" />
-                <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-[#E2FF00]">Active Tips</span>
+              <div className="flex items-center gap-2">
+                {!isStandaloneWindow && (
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}${window.location.pathname}?standalone=true&category=${activeCategory.id}`;
+                      window.open(url, "_blank");
+                    }}
+                    title="Open in Another Window Activity"
+                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#E2FF00] hover:text-white transition-all cursor-pointer flex items-center justify-center mr-1"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                )}
+                <div className="flex items-center gap-1.5 bg-[#E2FF00]/10 px-2.5 py-1 rounded-full border border-[#E2FF00]/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] animate-pulse" />
+                  <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-[#E2FF00]">Active Tips</span>
+                </div>
               </div>
             </div>
 
