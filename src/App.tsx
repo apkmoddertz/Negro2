@@ -209,6 +209,7 @@ export default function App() {
   const [userMessages, setUserMessages] = useState<any[]>([]);
   const [adminAllMessages, setAdminAllMessages] = useState<any[]>([]);
   const [selectedChatUser, setSelectedChatUser] = useState<any | null>(null);
+  const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
   const [chatInputText, setChatInputText] = useState("");
 
   // Parse standalone mode on startup
@@ -1575,6 +1576,24 @@ export default function App() {
       ? freeCategories.find(c => c.id === selectedFreeCat)
       : vipCategories.find(c => c.id === selectedVipCat);
 
+  // Active chat partner computation for top header
+  const activeChatPartner = React.useMemo(() => {
+    if (activeTab !== "chats") return null;
+    if (isMainAdmin) {
+      if (!selectedChatUserId) return null;
+      const profile = allUsers.find(u => u.uid === selectedChatUserId || u.id === selectedChatUserId);
+      return {
+        username: profile?.username || profile?.email?.split("@")[0] || "Client " + selectedChatUserId.substring(0, 5),
+        email: profile?.email || "No Email Provided"
+      };
+    } else {
+      return {
+        username: "Negro Tips Support",
+        email: "jilalamasanja1998@gmail.com"
+      };
+    }
+  }, [activeTab, isMainAdmin, selectedChatUserId, allUsers]);
+
   // Background style
   const backgroundStyle = activeTab === "chats" ? {
     backgroundColor: "#efeae2",
@@ -1727,7 +1746,7 @@ export default function App() {
   return (
     <div 
       style={backgroundStyle}
-      className={`min-h-screen ${activeTab === 'chats' ? 'bg-[#efeae2] text-[#111b21] pb-3 md:pb-5' : 'bg-[#300202] text-slate-100 pb-12'} font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pt-14 relative overflow-x-hidden transition-all duration-500`}
+      className={`min-h-screen ${activeTab === 'chats' ? 'bg-[#efeae2] text-[#111b21] pb-0' : 'bg-[#300202] text-slate-100 pb-12'} font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pt-14 relative overflow-x-hidden transition-all duration-500`}
     >
       
       {/* Background ambient radial glow if not in correct score */}
@@ -2226,18 +2245,47 @@ export default function App() {
         <div className="absolute bottom-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-[#E2FF00]/45 to-transparent opacity-80" />
 
         <div className="flex items-center gap-3">
-          <button
-            id="hamburger-btn"
-            onClick={() => setIsDrawerOpen(true)}
-            className="p-1.5 rounded-lg text-slate-300 hover:text-[#E2FF00] hover:bg-white/5 active:scale-95 transition-all duration-300 cursor-pointer"
-            aria-label="Open navigation menu"
-          >
-            <Menu className="w-5.5 h-5.5" />
-          </button>
+          {activeTab === "chats" && isMainAdmin && selectedChatUserId ? (
+            <button
+              id="chat-back-btn"
+              onClick={() => setSelectedChatUserId(null)}
+              className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 active:scale-95 transition-all duration-300 cursor-pointer"
+              title="Back to client list"
+            >
+              <ArrowLeft className="w-5.5 h-5.5" />
+            </button>
+          ) : (
+            <button
+              id="hamburger-btn"
+              onClick={() => setIsDrawerOpen(true)}
+              className="p-1.5 rounded-lg text-slate-300 hover:text-[#E2FF00] hover:bg-white/5 active:scale-95 transition-all duration-300 cursor-pointer"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="w-5.5 h-5.5" />
+            </button>
+          )}
           
-          <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
-            {activeTab === "chats" ? "Negro Support" : isMainAdmin ? "Negro Admin" : "Negro Tips"} <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
-          </span>
+          {activeTab === "chats" ? (
+            activeChatPartner ? (
+              <div className="flex flex-col items-start leading-tight">
+                <span className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5">
+                  {activeChatPartner.username} 
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
+                </span>
+                <span className="text-[10px] text-slate-300 font-mono font-medium truncate max-w-[150px] sm:max-w-[220px]">
+                  {activeChatPartner.email}
+                </span>
+              </div>
+            ) : (
+              <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
+                Client Chats <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
+              </span>
+            )
+          ) : (
+            <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
+              {isMainAdmin ? "Negro Admin" : "Negro Tips"} <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
+            </span>
+          )}
         </div>
 
         <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${
@@ -2447,7 +2495,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className={`w-full ${activeTab === 'chats' ? 'max-w-[1200px] px-2 md:px-6' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
+      <main className={`w-full ${activeTab === 'chats' ? 'max-w-none w-full px-0' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
 
         {activeTab === "correct_score" ? (
           /* CORRECT SCORE / HOME VIEW */
@@ -3425,6 +3473,8 @@ export default function App() {
               allUsers={allUsers}
               db={db}
               sendFCMNotificationProgrammatic={sendFCMNotificationProgrammatic}
+              selectedUserId={selectedChatUserId}
+              setSelectedUserId={setSelectedChatUserId}
             />
           ) : (
             <div className="bg-[#121921]/90 border border-white/5 p-8 rounded-2xl text-center space-y-4 max-w-md mx-auto my-12 shadow-2xl">
