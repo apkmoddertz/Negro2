@@ -1746,7 +1746,11 @@ export default function App() {
   return (
     <div 
       style={backgroundStyle}
-      className={`min-h-screen ${activeTab === 'chats' ? 'bg-[#efeae2] text-[#111b21] pb-0' : 'bg-[#300202] text-slate-100 pb-12'} font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pt-14 relative overflow-x-hidden transition-all duration-500`}
+      className={`min-h-screen ${
+        activeTab === 'chats' 
+          ? 'h-screen overflow-hidden bg-[#efeae2] text-[#111b21] pb-0' 
+          : 'bg-[#300202] text-slate-100 pb-12'
+      } font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pt-[54px] relative overflow-x-hidden transition-all duration-500`}
     >
       
       {/* Background ambient radial glow if not in correct score */}
@@ -2484,7 +2488,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className={`w-full ${activeTab === 'chats' ? 'max-w-none w-full px-0' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
+      <main className={`w-full ${activeTab === 'chats' ? 'max-w-none w-full px-0 h-full flex-1' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
 
         {activeTab === "correct_score" ? (
           /* CORRECT SCORE / HOME VIEW */

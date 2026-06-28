@@ -469,7 +469,7 @@ export default function WhatsAppChat({
   const quickReplies: string[] = [];
 
   return (
-    <div id="whatsapp-view-container" className="w-full bg-[#f0f2f5] flex flex-col md:flex-row h-[calc(100vh-54px)] overflow-hidden select-none font-sans text-[#111b21]">
+    <div id="whatsapp-view-container" className="w-full bg-[#f0f2f5] flex flex-col md:flex-row h-full overflow-hidden select-none font-sans text-[#111b21]">
       
       {/* SIDEBAR FOR ADMIN: LIST OF USER CHATS */}
       {isMainAdmin && (
@@ -709,13 +709,11 @@ export default function WhatsAppChat({
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Bottom fixed messaging controls area */}
+        {/* Bottom messaging controls area */}
         {(!isMainAdmin || selectedUserId) && (
           <div 
             id="fixed-chat-controls-container" 
-            className={`fixed bottom-0 right-0 z-30 bg-[#540202] transition-all duration-300 flex flex-col ${
-              isMainAdmin ? 'left-0 md:left-[320px]' : 'left-0'
-            }`}
+            className="w-full bg-[#540202] z-30 flex flex-col shrink-0 relative border-t border-white/5"
             style={{
               paddingBottom: "env(safe-area-inset-bottom)"
             }}
