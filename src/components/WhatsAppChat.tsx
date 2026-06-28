@@ -17,7 +17,8 @@ import {
   ShieldCheck,
   Zap,
   X,
-  Trash2
+  Trash2,
+  Settings
 } from "lucide-react";
 import { doc, setDoc, collection, onSnapshot } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
@@ -259,20 +260,22 @@ export default function WhatsAppChat({
         });
         setAgents(sorted);
       } else {
-        DEFAULT_AGENTS.forEach(async (agent) => {
-          try {
-            await setDoc(doc(db, "agents", agent.id), agent);
-          } catch (e) {
-            console.error("Error seeding agent:", e);
-          }
-        });
+        if (isMainAdmin) {
+          DEFAULT_AGENTS.forEach(async (agent) => {
+            try {
+              await setDoc(doc(db, "agents", agent.id), agent);
+            } catch (e) {
+              console.error("Error seeding agent:", e);
+            }
+          });
+        }
         setAgents(DEFAULT_AGENTS);
       }
     }, (error) => {
       console.error("Error listening to agents:", error);
     });
     return () => unsubscribe();
-  }, [db]);
+  }, [db, isMainAdmin]);
   
   // Selected user for Admin chat
   const [localSelectedUserId, localSetSelectedUserId] = useState<string | null>(null);
@@ -562,63 +565,6 @@ export default function WhatsAppChat({
       {/* CHAT MAIN CONVERSATION WINDOW */}
       <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden">
         
-        {/* POLISHED CHAT HEADER */}
-        {(!isMainAdmin || selectedUserId) && activePartner && (
-          <div className="h-[54px] bg-[#f0f2f5] border-b border-[#d1d7db] px-4 flex items-center justify-between shrink-0 select-none z-20 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
-            <div className="flex items-center gap-3">
-              {isMainAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedUserId(null)}
-                  className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200/50 active:scale-95 transition-all md:hidden cursor-pointer flex items-center justify-center"
-                  aria-label="Back to chat list"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-              )}
-              
-              {/* Partner Avatar / Identity */}
-              <div className="relative shrink-0">
-                <div className={`w-9 h-9 rounded-full ${activePartner.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-slate-300"} flex items-center justify-center text-slate-800 font-bold text-xs uppercase shadow-sm`}>
-                  {activePartner.username[0]}
-                </div>
-                <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white animate-pulse" />
-              </div>
-              
-              <div className="flex flex-col text-left">
-                <span className="text-xs font-black text-[#111b21] flex items-center gap-1 font-sans uppercase tracking-wide">
-                  {activePartner.username}
-                  {activePartner.isVip && <Zap className="w-2.5 h-2.5 text-yellow-500 fill-yellow-500 shrink-0" />}
-                </span>
-                <span className="text-[9px] text-[#667781] font-mono leading-none mt-0.5">
-                  {activePartner.email}
-                </span>
-              </div>
-            </div>
-
-            {/* Right icons or status actions */}
-            <div className="flex items-center gap-2">
-              {!isMainAdmin && (
-                <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/25 px-2.5 py-1 rounded-full">
-                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                  <span className="text-[8px] font-black uppercase text-emerald-600 tracking-wider">Agents Live</span>
-                </div>
-              )}
-              {isMainAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setShowAgentsModal(true)}
-                  className="text-[9px] bg-[#E2FF00]/15 text-yellow-600 hover:bg-[#E2FF00]/30 border border-yellow-600/20 px-2.5 py-1 rounded-md font-sans font-black uppercase cursor-pointer transition-all active:scale-95 flex items-center gap-1"
-                  title="Manage support agents and availability status"
-                >
-                  <Sparkles className="w-3 h-3 text-yellow-500" />
-                  Manage Agents
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-        
         {/* MESSAGES SCROLL CONTAINER with genuine WhatsApp Doodle Wallpaper look */}
         <div 
           id="chat-messages-container"
@@ -822,6 +768,14 @@ export default function WhatsAppChat({
                       </button>
                     ))}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowAgentsModal(true)}
+                    className="p-1 bg-white/5 hover:bg-[#E2FF00]/20 border border-white/10 hover:border-[#E2FF00]/40 rounded text-yellow-400 hover:text-yellow-300 transition-all active:scale-95 cursor-pointer flex items-center justify-center h-[22px] w-[22px]"
+                    title="Manage support agents and availability status"
+                  >
+                    <Settings className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             )}

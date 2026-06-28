@@ -2272,9 +2272,11 @@ export default function App() {
                   {activeChatPartner.username} 
                   <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
                 </span>
-                <span className="text-[10px] text-slate-300 font-mono font-medium truncate max-w-[150px] sm:max-w-[220px]">
-                  {activeChatPartner.email}
-                </span>
+                {isMainAdmin && (
+                  <span className="text-[10px] text-slate-300 font-mono font-medium truncate max-w-[150px] sm:max-w-[220px]">
+                    {activeChatPartner.email}
+                  </span>
+                )}
               </div>
             ) : (
               <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
