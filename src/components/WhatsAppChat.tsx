@@ -236,19 +236,19 @@ export default function WhatsAppChat({
       ];
 
   return (
-    <div id="whatsapp-view-container" className="w-full bg-[#0b0f14] border border-white/5 rounded-2xl shadow-2xl flex flex-col md:flex-row h-[75vh] min-h-[500px] overflow-hidden select-none font-sans">
+    <div id="whatsapp-view-container" className="w-full bg-[#f0f2f5] border border-slate-300/80 rounded-2xl shadow-xl flex flex-col md:flex-row h-[calc(100vh-100px)] md:h-[calc(100vh-130px)] min-h-[520px] overflow-hidden select-none font-sans text-[#111b21]">
       
       {/* SIDEBAR FOR ADMIN: LIST OF USER CHATS */}
       {isMainAdmin && (
-        <div id="admin-chat-sidebar" className={`w-full md:w-[280px] border-r border-white/10 flex flex-col bg-[#0e141b] ${selectedUserId ? "hidden md:flex" : "flex"}`}>
-          <div className="p-3 border-b border-white/5 space-y-2.5">
+        <div id="admin-chat-sidebar" className={`w-full md:w-[320px] border-r border-[#d1d7db] flex flex-col bg-[#ffffff] ${selectedUserId ? "hidden md:flex" : "flex"}`}>
+          <div className="p-3.5 border-b border-[#e9edef] bg-[#f0f2f5] space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5 text-[#E2FF00]" />
+              <span className="text-xs font-black uppercase tracking-wider text-[#111b21] flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-[#00a884]" />
                 Client Chats
               </span>
-              <span className="text-[10px] bg-[#E2FF00]/10 text-[#E2FF00] px-2 py-0.5 rounded-full font-mono font-bold">
-                {chatSessions.length} Actives
+              <span className="text-[10px] bg-[#00a884]/10 text-[#00a884] px-2.5 py-0.5 rounded-full font-sans font-black">
+                {chatSessions.length} Active
               </span>
             </div>
             
@@ -260,18 +260,18 @@ export default function WhatsAppChat({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search clients..."
-                className="w-full pl-8 pr-3 py-1.5 bg-[#17212b] border border-white/5 rounded-lg text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-[#E2FF00]/40 transition-all"
+                className="w-full pl-8 pr-3 py-1.5 bg-[#ffffff] border border-slate-200 rounded-lg text-xs font-bold text-[#111b21] placeholder-slate-400 focus:outline-none focus:border-[#00a884] transition-all"
               />
-              <Search className="absolute left-2.5 top-2.2 w-3.5 h-3.5 text-slate-500" />
+              <Search className="absolute left-2.5 top-2.2 w-3.5 h-3.5 text-slate-400" />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-white/5 scrollbar-none">
+          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white scrollbar-none">
             {filteredSessions.length === 0 ? (
-              <div className="p-6 text-center space-y-1 text-slate-500 select-none">
-                <Search className="w-6 h-6 mx-auto text-slate-600 mb-1" />
-                <p className="text-xs font-bold">No active chat sessions</p>
-                <p className="text-[10px]">Waiting for users to initiate chats</p>
+              <div className="p-6 text-center space-y-1 text-slate-400 select-none h-full flex flex-col justify-center items-center">
+                <Search className="w-6 h-6 mx-auto text-slate-300 mb-1" />
+                <p className="text-xs font-bold text-slate-600">No active sessions</p>
+                <p className="text-[10px] text-slate-400">Waiting for clients to initiate chats</p>
               </div>
             ) : (
               filteredSessions.map(session => {
@@ -281,37 +281,37 @@ export default function WhatsAppChat({
                     id={`session-btn-${session.userId}`}
                     key={session.userId}
                     onClick={() => setSelectedUserId(session.userId)}
-                    className={`w-full p-3 flex items-start gap-2.5 transition-all cursor-pointer text-left ${
-                      isSelected ? "bg-[#182533]" : "hover:bg-white/5"
+                    className={`w-full p-3.5 flex items-start gap-3 transition-all cursor-pointer text-left border-b border-[#f5f6f6] ${
+                      isSelected ? "bg-[#eaebeb]" : "hover:bg-[#f5f6f6] bg-[#ffffff]"
                     }`}
                   >
                     <div className="relative shrink-0 mt-0.5">
-                      <div className={`w-8 h-8 rounded-full ${session.isVip ? "bg-gradient-to-r from-yellow-500 to-[#E2FF00]" : "bg-slate-700"} flex items-center justify-center text-black font-black text-xs uppercase`}>
+                      <div className={`w-9 h-9 rounded-full ${session.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-slate-300"} flex items-center justify-center text-slate-800 font-bold text-sm uppercase shadow-sm`}>
                         {session.username[0]}
                       </div>
-                      <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-[#0b0f14] ${session.isVip ? "bg-yellow-500" : "bg-emerald-500 animate-pulse"}`} />
+                      <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${session.isVip ? "bg-yellow-500" : "bg-emerald-500 animate-pulse"}`} />
                     </div>
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs font-bold text-white truncate flex items-center gap-1 font-sans uppercase tracking-wide">
+                        <p className="text-xs font-black text-[#111b21] truncate flex items-center gap-1 font-sans uppercase tracking-wide">
                           {session.username}
-                          {session.isVip && <Zap className="w-2.5 h-2.5 text-yellow-400 fill-yellow-400 shrink-0" />}
+                          {session.isVip && <Zap className="w-2.5 h-2.5 text-yellow-500 fill-yellow-500 shrink-0" />}
                         </p>
-                        <span className="text-[9px] text-slate-500 font-mono">
+                        <span className="text-[9px] text-slate-400 font-mono">
                           {new Date(session.lastMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                      <p className="text-[10px] text-[#667781] truncate mt-0.5">
                         {session.lastMessage.senderId === "admin" ? "You: " : ""}{session.lastMessage.text}
                       </p>
-                      <p className="text-[8px] text-slate-600 truncate font-mono">
+                      <p className="text-[8px] text-slate-400 truncate font-mono mt-0.5">
                         {session.email}
                       </p>
                     </div>
 
                     {session.unreadCount > 0 && (
-                      <span className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded-full shrink-0 font-black font-mono animate-pulse self-center">
+                      <span className="bg-[#00a884] text-white text-[9px] w-5 h-5 rounded-full flex items-center justify-center font-black shrink-0 font-mono self-center shadow-sm">
                         {session.unreadCount}
                       </span>
                     )}
@@ -324,89 +324,91 @@ export default function WhatsAppChat({
       )}
 
       {/* CHAT MAIN CONVERSATION WINDOW */}
-      <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#0c131a] relative">
+      <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden">
         
         {/* WhatsApp-style Header */}
         {activePartner ? (
-          <div className="h-[52px] bg-[#17212b] px-4 flex items-center justify-between border-b border-white/5 shadow-md">
+          <div className="h-[54px] bg-[#f0f2f5] px-4 flex items-center justify-between border-b border-[#e9edef] shadow-sm text-[#111b21]">
             <div className="flex items-center gap-3">
               {isMainAdmin && (
                 <button
                   id="chat-back-to-sessions"
                   onClick={() => setSelectedUserId(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 active:scale-95 transition-all cursor-pointer md:hidden mr-1"
+                  className="p-1.5 rounded-lg text-[#54656f] hover:text-[#111b21] hover:bg-[#e1e3e5] active:scale-95 transition-all cursor-pointer md:hidden mr-1"
                 >
-                  <ArrowLeft className="w-5 h-5" />
+                  <ArrowLeft className="w-4.5 h-4.5" />
                 </button>
               )}
               
               <div className="relative shrink-0">
-                <div className={`w-8 h-8 rounded-full ${activePartner.isVip ? "bg-gradient-to-r from-yellow-500 to-[#E2FF00]" : "bg-emerald-600"} flex items-center justify-center text-black font-black text-xs uppercase shadow-[0_0_8px_rgba(226,255,0,0.1)]`}>
+                <div className={`w-9 h-9 rounded-full ${activePartner.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-emerald-600"} flex items-center justify-center text-white font-black text-xs uppercase shadow-sm`}>
                   {activePartner.username[0]}
                 </div>
-                <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-400 border border-[#17212b] animate-ping" />
-                <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-[#17212b]" />
+                <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-400 border border-white animate-ping" />
+                <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-emerald-500 border border-white" />
               </div>
 
               <div>
-                <p className="text-xs font-black text-white flex items-center gap-1 font-sans uppercase tracking-wider">
+                <p className="text-xs font-black text-[#111b21] flex items-center gap-1 font-sans uppercase tracking-wider leading-tight">
                   {activePartner.username}
-                  {activePartner.isVip && <Zap className="w-3 h-3 text-yellow-400 fill-yellow-400" />}
+                  {activePartner.isVip && <Zap className="w-3 h-3 text-yellow-500 fill-yellow-500" />}
                 </p>
-                <span className="text-[9px] text-emerald-400 font-bold block leading-none">
-                  {isMainAdmin ? activePartner.email : "Official Support"}
+                <span className="text-[9px] text-[#00a884] font-bold block">
+                  {isMainAdmin ? activePartner.email : "Official Live Support"}
                 </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-3.5 text-slate-400">
-              <Phone className="w-4 h-4 hover:text-[#E2FF00] cursor-pointer transition-colors" />
-              <Video className="w-4 h-4 hover:text-[#E2FF00] cursor-pointer transition-colors" />
-              <MoreVertical className="w-4 h-4 hover:text-white cursor-pointer transition-colors" />
+            <div className="flex items-center gap-4 text-[#54656f]">
+              <Phone className="w-4.5 h-4.5 hover:text-[#111b21] cursor-pointer transition-colors" />
+              <Video className="w-4.5 h-4.5 hover:text-[#111b21] cursor-pointer transition-colors" />
+              <MoreVertical className="w-4.5 h-4.5 hover:text-[#111b21] cursor-pointer transition-colors" />
             </div>
           </div>
         ) : (
-          <div className="h-[52px] bg-[#17212b] px-4 flex items-center justify-center border-b border-white/5">
-            <span className="text-xs text-slate-500 font-bold">Select conversation thread</span>
+          <div className="h-[54px] bg-[#f0f2f5] px-4 flex items-center justify-center border-b border-[#e9edef] text-[#111b21]">
+            <span className="text-xs text-[#667781] font-bold">Select conversation thread to start chatting</span>
           </div>
         )}
 
-        {/* MESSAGES SCROLL CONTAINER with WhatsApp Doodle Wallpaper look */}
+        {/* MESSAGES SCROLL CONTAINER with genuine WhatsApp Doodle Wallpaper look */}
         <div 
           id="chat-messages-container"
           className="flex-1 overflow-y-auto p-4 space-y-3 relative scrollbar-none"
           style={{
-            backgroundImage: "radial-gradient(rgba(226, 255, 0, 0.015) 1.5px, transparent 1.5px)",
-            backgroundSize: "24px 24px"
+            backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
+            backgroundSize: "380px",
+            backgroundRepeat: "repeat",
+            opacity: 0.98
           }}
         >
           {/* Support Safe Banner */}
-          <div className="flex justify-center my-1 select-none">
-            <div className="bg-[#18222d] border border-white/5 px-3 py-1.5 rounded-xl flex items-center gap-1.5 text-[10px] text-slate-400 max-w-[280px] text-center shadow-md">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-              <span>End-to-end encrypted. Tap to verify.</span>
+          <div className="flex justify-center my-1.5 select-none">
+            <div className="bg-[#ffe194]/70 border border-[#f5c347]/30 px-3 py-1.5 rounded-lg flex items-center gap-2 text-[10px] text-[#604b1e] max-w-[320px] text-center shadow-sm font-medium">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Messages are end-to-end encrypted with SSL security.</span>
             </div>
           </div>
 
           {isMainAdmin && !selectedUserId ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 space-y-3 select-none">
-              <div className="w-16 h-16 rounded-full bg-[#17212b] border border-white/5 flex items-center justify-center text-[#E2FF00] shadow-lg">
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 space-y-3 select-none bg-[#f8f9fa]">
+              <div className="w-16 h-16 rounded-full bg-[#f0f2f5] border border-slate-200 flex items-center justify-center text-[#00a884] shadow-md">
                 <MessageSquare className="w-8 h-8" />
               </div>
-              <div className="max-w-[240px]">
-                <h4 className="text-xs font-black uppercase text-white tracking-wider">Negro Support Chats</h4>
-                <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+              <div className="max-w-[280px]">
+                <h4 className="text-sm font-black uppercase text-[#111b21] tracking-wider">Negro Support Chats</h4>
+                <p className="text-[10px] text-[#667781] mt-1 leading-relaxed">
                   Select any active client from the left menu panel to view transaction histories and respond instantly.
                 </p>
               </div>
             </div>
           ) : activeMessages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2 select-none">
-              <p className="text-xs font-bold text-slate-400">No messages yet</p>
-              <p className="text-[10px] text-slate-500 max-w-[200px] leading-relaxed">
+              <p className="text-xs font-bold text-[#111b21]">No messages yet</p>
+              <p className="text-[10px] text-[#667781] max-w-[200px] leading-relaxed">
                 {isMainAdmin 
                   ? "Send an initial message to active users to help with their subscriptions." 
-                  : "Send your screenshot or message. The support team responds in less than 15 minutes."}
+                  : "Send your payment confirmation screenshot. The support team responds in less than 15 minutes."}
               </p>
             </div>
           ) : (
@@ -417,39 +419,39 @@ export default function WhatsAppChat({
                   key={msg.id || idx} 
                   className={`flex ${isMe ? "justify-end" : "justify-start"}`}
                 >
-                  <div className={`max-w-[75%] rounded-2xl p-2.5 shadow-md flex flex-col ${
+                  <div className={`max-w-[70%] rounded-2xl p-2.5 shadow-sm flex flex-col relative ${
                     isMe 
-                      ? "bg-emerald-900/60 border border-emerald-500/20 rounded-tr-none text-slate-100" 
-                      : "bg-[#182533] border border-white/5 rounded-tl-none text-slate-200"
+                      ? "bg-[#d9fdd3] border border-[#e1f7de] rounded-tr-none text-[#111b21]" 
+                      : "bg-[#ffffff] border border-[#e9edef] rounded-tl-none text-[#111b21]"
                   }`}>
                     {/* Message Sender Name */}
-                    <span className="text-[8px] font-black uppercase tracking-wider text-[#E2FF00] mb-0.5">
+                    <span className="text-[8px] font-black uppercase tracking-wider text-[#005c4b] mb-0.5 select-none">
                       {isMe ? "You" : msg.senderName}
                     </span>
                     
                     {/* Text */}
-                    <p className="text-xs leading-relaxed font-sans select-text whitespace-pre-wrap">
+                    <p className="text-xs leading-relaxed font-sans select-text whitespace-pre-wrap text-[#111b21]">
                       {msg.text}
                     </p>
 
                     {/* Metadata */}
-                    <div className="flex items-center justify-end gap-1 mt-1 self-end">
-                      <span className="text-[8px] text-slate-400 font-mono">
+                    <div className="flex items-center justify-end gap-1 mt-1 self-end text-[#667781] select-none">
+                      <span className="text-[8px] font-mono">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       {isMe && (
                         <span>
                           {isMainAdmin ? (
                             msg.readByAdmin ? (
-                              <CheckCircle2 className="w-2.5 h-2.5 text-[#E2FF00]" />
+                              <CheckCircle2 className="w-3 h-3 text-[#53bdeb]" />
                             ) : (
-                              <Check className="w-2.5 h-2.5 text-slate-500" />
+                              <Check className="w-3 h-3 text-slate-400" />
                             )
                           ) : (
                             msg.readByUser ? (
-                              <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400" />
+                              <CheckCircle2 className="w-3 h-3 text-[#53bdeb]" />
                             ) : (
-                              <Clock className="w-2.5 h-2.5 text-slate-500" />
+                              <Clock className="w-3 h-3 text-slate-400" />
                             )
                           )}
                         </span>
@@ -465,13 +467,13 @@ export default function WhatsAppChat({
 
         {/* Quick Replies templates chips */}
         {(!isMainAdmin || selectedUserId) && (
-          <div className="px-3 py-1.5 bg-[#0e141b]/80 border-t border-white/5 overflow-x-auto whitespace-nowrap flex gap-2 scrollbar-none">
+          <div className="px-3 py-2 bg-[#f0f2f5] border-t border-[#e9edef] overflow-x-auto whitespace-nowrap flex gap-2 scrollbar-none shrink-0 select-none">
             {quickReplies.map((reply, i) => (
               <button
                 id={`quick-reply-${i}`}
                 key={i}
                 onClick={() => handleQuickReply(reply)}
-                className="inline-block px-3 py-1 bg-[#17212b] hover:bg-[#1f2d3d] text-[10px] text-slate-300 rounded-full border border-white/5 active:scale-95 transition-all cursor-pointer"
+                className="inline-block px-3 py-1 bg-[#ffffff] hover:bg-slate-100 text-[#005c4b] text-[10px] rounded-full border border-[#e9edef] active:scale-95 transition-all cursor-pointer shadow-sm font-semibold"
               >
                 {reply}
               </button>
@@ -484,11 +486,11 @@ export default function WhatsAppChat({
           <form 
             id="chat-message-form"
             onSubmit={handleSend} 
-            className="p-3 bg-[#17212b] border-t border-white/5 flex items-center gap-2"
+            className="p-3 bg-[#f0f2f5] border-t border-[#e9edef] flex items-center gap-3 shrink-0 sticky bottom-0 z-20"
           >
-            <div className="flex items-center gap-2.5 text-slate-400">
-              <Smile className="w-5 h-5 hover:text-[#E2FF00] cursor-pointer transition-colors shrink-0" />
-              <Paperclip className="w-4.5 h-4.5 hover:text-[#E2FF00] cursor-pointer transition-colors shrink-0" />
+            <div className="flex items-center gap-3 text-[#54656f]">
+              <Smile className="w-5.5 h-5.5 hover:text-[#00a884] cursor-pointer transition-colors shrink-0" />
+              <Paperclip className="w-5 h-5 hover:text-[#00a884] cursor-pointer transition-colors shrink-0" />
             </div>
 
             <input
@@ -497,16 +499,16 @@ export default function WhatsAppChat({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               placeholder="Type your message..."
-              className="flex-1 px-3 py-2 bg-[#0e141b] border border-white/5 rounded-xl text-xs font-medium text-white focus:outline-none focus:border-[#E2FF00]/40 placeholder-slate-500 transition-all"
+              className="flex-1 px-4 py-2.5 bg-[#ffffff] border border-slate-200 rounded-full text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#00a884] placeholder-slate-400 transition-all shadow-sm"
             />
 
             <button
               id="send-message-btn"
               type="submit"
               disabled={!inputText.trim()}
-              className="w-8 h-8 rounded-full bg-[#E2FF00] hover:bg-[#d4f000] text-black flex items-center justify-center shrink-0 active:scale-95 hover:scale-105 disabled:opacity-40 disabled:scale-100 disabled:cursor-not-allowed transition-all cursor-pointer shadow-[0_0_10px_rgba(226,255,0,0.25)]"
+              className="w-10 h-10 rounded-full bg-[#00a884] hover:bg-[#008f72] text-white flex items-center justify-center shrink-0 active:scale-95 hover:scale-105 disabled:opacity-40 disabled:scale-100 disabled:cursor-not-allowed transition-all cursor-pointer shadow-md"
             >
-              <Send className="w-3.5 h-3.5 ml-0.5" strokeWidth={2.5} />
+              <Send className="w-4 h-4 ml-0.5 text-white" strokeWidth={2.5} />
             </button>
           </form>
         )}

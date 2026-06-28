@@ -1576,7 +1576,11 @@ export default function App() {
       : vipCategories.find(c => c.id === selectedVipCat);
 
   // Background style
-  const backgroundStyle = activeTab === "correct_score" ? {
+  const backgroundStyle = activeTab === "chats" ? {
+    backgroundColor: "#efeae2",
+    backgroundImage: `radial-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px)`,
+    backgroundSize: "20px 20px"
+  } : activeTab === "correct_score" ? {
     backgroundImage: `linear-gradient(rgba(48, 2, 2, 0.88), rgba(48, 2, 2, 0.97)), url("https://i.ibb.co/NdsrmZx0/2d4e211d-777e-4801-bd34-cdb12a906b44.jpg")`,
     backgroundSize: "cover",
     backgroundPosition: "center",
@@ -1723,7 +1727,7 @@ export default function App() {
   return (
     <div 
       style={backgroundStyle}
-      className="min-h-screen bg-[#300202] text-slate-100 font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pb-12 pt-14 relative overflow-x-hidden transition-all duration-500"
+      className={`min-h-screen ${activeTab === 'chats' ? 'bg-[#efeae2] text-[#111b21] pb-3 md:pb-5' : 'bg-[#300202] text-slate-100 pb-12'} font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pt-14 relative overflow-x-hidden transition-all duration-500`}
     >
       
       {/* Background ambient radial glow if not in correct score */}
@@ -2232,20 +2236,22 @@ export default function App() {
           </button>
           
           <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
-            Negro Admin <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
+            {activeTab === "chats" ? "Negro Support" : isMainAdmin ? "Negro Admin" : "Negro Tips"} <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
           </span>
         </div>
 
         <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${
-          toggleMode === "free" 
-            ? "bg-slate-500/10 border-slate-500/20 text-slate-400" 
-            : "bg-yellow-500/10 border-[#E2FF00]/30 text-[#E2FF00] shadow-[0_0_10px_rgba(226,255,0,0.15)]"
+          activeTab === "chats"
+            ? "bg-[#25D366]/20 border-[#25D366]/40 text-[#25D366] shadow-[0_0_10px_rgba(37,211,102,0.25)] font-black"
+            : toggleMode === "free" 
+              ? "bg-slate-500/10 border-slate-500/20 text-slate-400" 
+              : "bg-yellow-500/10 border-[#E2FF00]/30 text-[#E2FF00] shadow-[0_0_10px_rgba(226,255,0,0.15)]"
         }`}>
           <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-            toggleMode === "free" ? "bg-slate-400" : "bg-[#E2FF00]"
+            activeTab === "chats" ? "bg-[#25D366]" : toggleMode === "free" ? "bg-slate-400" : "bg-[#E2FF00]"
           }`} />
           <span className="text-[9px] font-mono font-bold uppercase tracking-wider">
-            {toggleMode === "free" ? "FREE ACCESS" : (() => {
+            {activeTab === "chats" ? "SUPPORT CHAT" : toggleMode === "free" ? "FREE ACCESS" : (() => {
               if (activeCategory) {
                 if (activeCategory.id.includes("cs")) return "CORRECT SCORE VIP";
                 if (activeCategory.id.includes("htft")) return "HT/FT VIP";
@@ -2441,7 +2447,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className="w-full max-w-[480px] px-4 flex flex-col items-center z-10">
+      <main className={`w-full ${activeTab === 'chats' ? 'max-w-[1200px] px-2 md:px-6' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
 
         {activeTab === "correct_score" ? (
           /* CORRECT SCORE / HOME VIEW */
@@ -4128,7 +4134,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Floating Action Button (FAB) for Match Upload */}
-      {isMainAdmin && (
+      {isMainAdmin && activeTab === "correct_score" && (
         <button
           onClick={() => {
             setUploadCategory(activeCategory?.id || "");
