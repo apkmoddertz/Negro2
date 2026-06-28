@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { freeTips, vipTips } from "./data/tipsData";
+import WhatsAppChat from "./components/WhatsAppChat";
 import { CredentialsStatus, CategoryData, Match } from "./types";
 import { auth, db } from "./firebase";
 import { 
@@ -67,10 +68,12 @@ import {
   Lock, 
   PlusCircle, 
   Sparkles as SparklesIcon,
-  Mail
+  Mail,
+  MessageSquare,
+  Paperclip
 } from "lucide-react";
 
-type ActiveTab = "notification" | "setting" | "correct_score" | "proofs";
+type ActiveTab = "notification" | "setting" | "correct_score" | "proofs" | "chats";
 
 enum OperationType {
   CREATE = 'create',
@@ -201,6 +204,12 @@ export default function App() {
     : null;
 
   const [isStandaloneWindow, setIsStandaloneWindow] = useState(false);
+
+  // Chat/Messages states
+  const [userMessages, setUserMessages] = useState<any[]>([]);
+  const [adminAllMessages, setAdminAllMessages] = useState<any[]>([]);
+  const [selectedChatUser, setSelectedChatUser] = useState<any | null>(null);
+  const [chatInputText, setChatInputText] = useState("");
 
   // Parse standalone mode on startup
   useEffect(() => {
@@ -378,6 +387,124 @@ export default function App() {
       unsubUsers();
     };
   }, [isMainAdmin]);
+
+  // 2d. Listen to chat messages (realtime sync)
+  useEffect(() => {
+    if (!currentUser) {
+      setUserMessages([]);
+      return;
+    }
+    if (isMainAdmin) {
+      setUserMessages([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, "chats"),
+      where("userId", "==", currentUser.uid)
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        msgs.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        setUserMessages(msgs);
+      } else {
+        setUserMessages([]);
+      }
+    }, (err) => {
+      console.error("Error loading chat messages for user:", err);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, isMainAdmin]);
+
+  useEffect(() => {
+    if (!currentUser || !isMainAdmin) {
+      setAdminAllMessages([]);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(collection(db, "chats"), (snapshot) => {
+      if (!snapshot.empty) {
+        const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        msgs.sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        setAdminAllMessages(msgs);
+      } else {
+        setAdminAllMessages([]);
+      }
+    }, (err) => {
+      console.error("Error loading all chat messages for admin:", err);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, isMainAdmin]);
+
+  // Programmatic FCM sender helper that triggers when user/admin chat
+  const sendFCMNotificationProgrammatic = async (titleText: string, messageText: string) => {
+    try {
+      const stored = localStorage.getItem("fcm_service_account");
+      if (!stored) return;
+      const sa = JSON.parse(stored);
+      const projectId = sa.project_id || sa.projectId;
+      const privateKey = (sa.private_key || sa.privateKey)?.replace(/\\n/g, "\n");
+      const clientEmail = sa.client_email || sa.clientEmail;
+
+      if (!projectId || !privateKey || !clientEmail) return;
+
+      const jwt = await signJwtClientSide(privateKey, clientEmail);
+      const oauthRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: new URLSearchParams({
+          grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+          assertion: jwt
+        })
+      });
+
+      if (!oauthRes.ok) return;
+
+      const tokenData = await oauthRes.json();
+      const accessToken = tokenData.access_token;
+      if (!accessToken) return;
+
+      const fcmPayload = {
+        message: {
+          topic: "all",
+          notification: {
+            title: titleText.trim(),
+            body: messageText.trim()
+          },
+          data: {
+            title: titleText.trim(),
+            body: messageText.trim(),
+            source: "noyify-eedaf"
+          },
+          android: {
+            priority: "high",
+            notification: {
+              channel_id: "default",
+              sound: "default"
+            }
+          }
+        }
+      };
+
+      const fcmEndpoint = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
+      await fetch(fcmEndpoint, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(fcmPayload)
+      });
+      console.log("Programmatic FCM push sent successfully.");
+    } catch (err) {
+      console.error("Failed to send programmatic FCM notification:", err);
+    }
+  };
 
   // 3. User Authentication Trigger
   const handleAuth = async (e: React.FormEvent) => {
@@ -1141,7 +1268,7 @@ export default function App() {
         title: title.trim(),
         body: message.trim(),
         image: imageUrl.trim(),
-        source: "zyromod"
+        source: "noyify-eedaf"
       };
 
       const fcmPayload = {
@@ -2207,6 +2334,35 @@ export default function App() {
                       )}
                     </button>
 
+                    <button
+                      onClick={() => {
+                        setActiveTab("chats");
+                        setIsDrawerOpen(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all text-xs font-bold border-l-4 cursor-pointer ${
+                        activeTab === "chats"
+                          ? "bg-gradient-to-r from-[#E2FF00] to-[#cbfa00] text-black shadow-[0_0_15px_rgba(226,255,0,0.3)] translate-x-1 font-extrabold border-white/60"
+                          : "text-slate-300 hover:text-white hover:bg-white/5 hover:translate-x-1 border-transparent hover:border-[#E2FF00]/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <MessageSquare className="w-4 h-4 shrink-0 text-inherit" />
+                        <span>{isMainAdmin ? "Client Chats" : "WhatsApp Chat"}</span>
+                      </div>
+                      {(() => {
+                        const count = isMainAdmin 
+                          ? adminAllMessages.filter(m => m.senderId !== "admin" && !m.readByAdmin).length
+                          : userMessages.filter(m => m.senderId === "admin" && !m.readByUser).length;
+                        return count > 0 ? (
+                          <span className="bg-red-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-black animate-bounce">
+                            {count}
+                          </span>
+                        ) : (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        );
+                      })()}
+                    </button>
+
                     {isMainAdmin && (
                       <>
                         <button
@@ -3252,6 +3408,31 @@ export default function App() {
               </AnimatePresence>
             </div>
           )
+        ) : activeTab === "chats" ? (
+          currentUser ? (
+            <WhatsAppChat
+              currentUser={currentUser}
+              isMainAdmin={isMainAdmin}
+              userProfile={userProfile}
+              userMessages={userMessages}
+              adminAllMessages={adminAllMessages}
+              allUsers={allUsers}
+              db={db}
+              sendFCMNotificationProgrammatic={sendFCMNotificationProgrammatic}
+            />
+          ) : (
+            <div className="bg-[#121921]/90 border border-white/5 p-8 rounded-2xl text-center space-y-4 max-w-md mx-auto my-12 shadow-2xl">
+              <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto text-red-400">
+                <Lock className="w-8 h-8" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="text-sm font-black uppercase tracking-wider text-white">Authentication Required</h3>
+                <p className="text-xs text-slate-400 leading-relaxed font-sans">
+                  Please register or log in to your account from the top menu to initiate real-time support chat.
+                </p>
+              </div>
+            </div>
+          )
         ) : null}
 
       </main>
@@ -3303,18 +3484,6 @@ export default function App() {
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                {!isStandaloneWindow && (
-                  <button
-                    onClick={() => {
-                      const url = `${window.location.origin}${window.location.pathname}?standalone=true&category=${activeCategory.id}`;
-                      window.open(url, "_blank");
-                    }}
-                    title="Open in Another Window Activity"
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-[#E2FF00] hover:text-white transition-all cursor-pointer flex items-center justify-center mr-1"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                )}
                 <div className="flex items-center gap-1.5 bg-[#E2FF00]/10 px-2.5 py-1 rounded-full border border-[#E2FF00]/20">
                   <div className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] animate-pulse" />
                   <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-[#E2FF00]">Active Tips</span>
@@ -3976,6 +4145,31 @@ export default function App() {
           title="Upload Match Selection"
         >
           <Plus className="w-6 h-6" strokeWidth={3} />
+        </button>
+      )}
+
+      {/* Floating Action Button for WhatsApp Chat Support */}
+      {currentUser && activeTab !== "chats" && !openedCategoryId && (
+        <button
+          onClick={() => setActiveTab("chats")}
+          className={`fixed ${isMainAdmin ? "bottom-24" : "bottom-6"} right-6 z-50 bg-[#25D366] hover:bg-[#20ba5a] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-[0_4px_25px_rgba(37,211,102,0.55)] active:scale-95 hover:scale-105 transition-all cursor-pointer border border-white/10`}
+          title="Open WhatsApp Chat Support"
+        >
+          <div className="relative">
+            <MessageSquare className="w-6 h-6 text-white" />
+            {(() => {
+              const count = isMainAdmin 
+                ? adminAllMessages.filter(m => m.senderId !== "admin" && !m.readByAdmin).length
+                : userMessages.filter(m => m.senderId === "admin" && !m.readByUser).length;
+              return count > 0 ? (
+                <span className="absolute -top-2.5 -right-2.5 bg-red-600 text-white text-[9px] w-5 h-5 rounded-full flex items-center justify-center font-black animate-bounce font-mono shadow-md border border-[#25D366]">
+                  {count}
+                </span>
+              ) : (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+              );
+            })()}
+          </div>
         </button>
       )}
 
