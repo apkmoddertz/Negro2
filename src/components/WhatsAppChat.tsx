@@ -17,7 +17,9 @@ import {
   Zap,
   X,
   Trash2,
-  Settings
+  Settings,
+  Link as LinkIcon,
+  ExternalLink
 } from "lucide-react";
 import { doc, setDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
@@ -138,6 +140,11 @@ export default function WhatsAppChat({
   const [selectedAgentId, setSelectedAgentId] = useState<string>("sophia");
   const [showAgentsModal, setShowAgentsModal] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+
+  // Shortcut URL states
+  const [showUrlShortcutModal, setShowUrlShortcutModal] = useState(false);
+  const [urlShortcutTitle, setUrlShortcutTitle] = useState("");
+  const [urlShortcutLink, setUrlShortcutLink] = useState("");
 
   // Subscription Orders states
   const [userOrders, setUserOrders] = useState<any[]>([]);
@@ -490,7 +497,55 @@ export default function WhatsAppChat({
     }
   }, [activeMessages.length]);
 
+  const handleCreateUrlShortcut = async (title: string, link: string) => {
+    let formattedLink = link.trim();
+    if (formattedLink && !/^https?:\/\//i.test(formattedLink)) {
+      formattedLink = "https://" + formattedLink;
+    }
+    const text = `[URL_BUTTON:${title.trim()}|${formattedLink}]`;
+    
+    try {
+      const messageId = "msg_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+      const targetUserId = isMainAdmin ? selectedUserId : currentUser?.uid;
+      if (!targetUserId || !currentUser) return;
+
+      const activeAgent = agents.find(a => a.id === selectedAgentId) || DEFAULT_AGENTS.find(a => a.id === "sophia") || DEFAULT_AGENTS[1];
+      const messageData = {
+        id: messageId,
+        userId: targetUserId,
+        senderId: "admin",
+        senderName: "Admin",
+        text: text,
+        message: text,
+        images: [],
+        timestamp: new Date().toISOString(),
+        readByAdmin: true,
+        readByUser: false,
+        senderType: "admin",
+        agentName: activeAgent.name,
+        agentRole: activeAgent.role,
+        agentImage: activeAgent.imageUrl
+      };
+
+      await setDoc(doc(db, "chats", messageId), messageData);
+      await sendFCMNotificationProgrammatic("Admin sent a quick link", `Click to open: ${title}`);
+    } catch (err) {
+      console.error("Error sending shortcut url link:", err);
+    }
+    
+    setShowUrlShortcutModal(false);
+    setUrlShortcutTitle("");
+    setUrlShortcutLink("");
+  };
+
   const handleMessageInputChange = (val: string) => {
+    if (isMainAdmin && val.toLowerCase().includes("#url")) {
+      setShowUrlShortcutModal(true);
+      const cleaned = val.replace(/#url/gi, "").trim();
+      setInputText(cleaned);
+      return;
+    }
+
     setInputText(val);
 
     const activeUserId = isMainAdmin ? selectedUserId : currentUser?.uid;
@@ -949,9 +1004,9 @@ export default function WhatsAppChat({
               return (
                 <div 
                   key={msg.id || idx} 
-                  className={`flex ${isMe ? "justify-end" : "justify-start"} relative z-10`}
+                  className={`flex ${isMe ? "justify-end" : "justify-start"} relative z-10 w-full mb-3 px-1`}
                 >
-                  <div className={`max-w-[70%] rounded-2xl p-2.5 shadow-sm flex flex-col relative ${
+                  <div className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 shadow-sm flex flex-col relative break-words [word-break:break-word] overflow-hidden ${
                     isMe 
                       ? "bg-[#E2FF00] border border-[#E2FF00]/30 rounded-tr-none text-[#111b21]" 
                       : "bg-[#870404] border border-transparent rounded-tl-none text-white"
@@ -1003,11 +1058,69 @@ export default function WhatsAppChat({
                       </div>
                     )}
 
-                    {/* Text */}
+                    {/* Text & Quick URL shortcut buttons */}
                     {msg.text && (
-                      <p className={`text-xs leading-relaxed font-sans select-text whitespace-pre-wrap ${isMe ? 'text-[#111b21]' : 'text-white'}`}>
-                        {msg.text}
-                      </p>
+                      (() => {
+                        const isUrlButton = msg.text.startsWith("[URL_BUTTON:") && msg.text.endsWith("]");
+                        if (isUrlButton) {
+                          const content = msg.text.slice(12, -1);
+                          const parts = content.split("|");
+                          const buttonTitle = parts[0] || "Click here";
+                          const buttonLink = parts.slice(1).join("|") || "#";
+                          
+                          return (
+                            <div className="py-3 px-1.5 w-full flex flex-col items-center select-none">
+                              <motion.a
+                                href={buttonLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-black text-center text-[11px] tracking-widest uppercase transition-all duration-300 cursor-pointer w-full max-w-[280px] relative overflow-hidden group/btn bg-[#25D366] text-white border border-[#25D366]/40 shadow-[0_0_20px_rgba(37,211,102,0.6)] hover:shadow-[0_0_25px_rgba(37,211,102,0.8)]"
+                                whileHover={{ scale: 1.08 }}
+                                whileTap={{ scale: 0.95 }}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ 
+                                  opacity: 1, 
+                                  y: 0,
+                                  scale: [1, 1.04, 0.98, 1.04, 1],
+                                  rotate: [0, 1, -1, 1, 0]
+                                }}
+                                transition={{
+                                  scale: {
+                                    repeat: Infinity,
+                                    repeatType: "reverse",
+                                    duration: 2,
+                                    ease: "easeInOut"
+                                  },
+                                  rotate: {
+                                    repeat: Infinity,
+                                    repeatType: "reverse",
+                                    duration: 2.5,
+                                    ease: "easeInOut"
+                                  },
+                                  opacity: { duration: 0.3 },
+                                  y: { duration: 0.3 }
+                                }}
+                              >
+                                <motion.span 
+                                  className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-1000 ease-out pointer-events-none"
+                                />
+                                <span className="absolute -inset-1 rounded-xl bg-[#25D366] opacity-30 blur-sm animate-pulse pointer-events-none" />
+                                <Zap className="w-4 h-4 text-white animate-bounce shrink-0 relative z-10" />
+                                <span className="font-extrabold truncate relative z-10 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
+                                  {buttonTitle}
+                                </span>
+                                <span className="text-xs relative z-10 font-bold ml-1 text-white/95 animate-ping">➔</span>
+                              </motion.a>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <p className={`text-xs leading-relaxed font-sans select-text whitespace-pre-wrap break-words [word-break:break-word] overflow-hidden ${isMe ? 'text-[#111b21]' : 'text-white'}`}>
+                            {msg.text}
+                          </p>
+                        );
+                      })()
                     )}
 
                     {/* Metadata */}
@@ -1410,6 +1523,101 @@ export default function WhatsAppChat({
                   </div>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Quick URL Shortcut Modal */}
+      <AnimatePresence>
+        {showUrlShortcutModal && (
+          <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-[70] flex items-center justify-center p-4 select-none">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-[#0b1017] border border-white/10 p-5 rounded-2xl w-full max-w-[420px] shadow-[0_25px_60px_rgba(0,0,0,0.85)] flex flex-col"
+            >
+              <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <LinkIcon className="w-5 h-5 text-[#E2FF00]" />
+                  <h3 className="text-sm font-black uppercase tracking-wider text-white font-sans">
+                    URL Shortcut Generator
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUrlShortcutModal(false);
+                    setUrlShortcutTitle("");
+                    setUrlShortcutLink("");
+                  }}
+                  className="p-1 hover:bg-white/5 rounded-full transition-all text-slate-400 hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (urlShortcutTitle.trim() && urlShortcutLink.trim()) {
+                    handleCreateUrlShortcut(urlShortcutTitle, urlShortcutLink);
+                  }
+                }}
+                className="space-y-4 text-left"
+              >
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                    Button Title / Text
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Join VIP Channel"
+                    value={urlShortcutTitle}
+                    onChange={(e) => setUrlShortcutTitle(e.target.value)}
+                    className="w-full bg-[#121921] border border-white/10 px-3 py-2.5 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00] transition-colors placeholder:text-slate-600"
+                    autoFocus
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                    URL Link / Website Address
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. t.me/channel"
+                    value={urlShortcutLink}
+                    onChange={(e) => setUrlShortcutLink(e.target.value)}
+                    className="w-full bg-[#121921] border border-white/10 px-3 py-2.5 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00] transition-colors placeholder:text-slate-600"
+                  />
+                </div>
+
+                <div className="flex gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowUrlShortcutModal(false);
+                      setUrlShortcutTitle("");
+                      setUrlShortcutLink("");
+                    }}
+                    className="flex-1 bg-white/5 hover:bg-white/10 text-slate-300 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-colors active:scale-95 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!urlShortcutTitle.trim() || !urlShortcutLink.trim()}
+                    className="flex-1 bg-[#E2FF00] hover:bg-[#cbfa00] text-[#0b1017] py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-md cursor-pointer flex items-center justify-center gap-1.5"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send Button</span>
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </div>
         )}
