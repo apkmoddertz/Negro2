@@ -878,9 +878,10 @@ export default function WhatsAppChat({
         {(!isMainAdmin || selectedUserId) && (
           <div 
             id="fixed-chat-controls-container" 
-            className="w-full bg-[#540202] z-30 flex flex-col shrink-0 relative border-t border-white/5"
+            className="w-full bg-[#540202] z-30 flex flex-col shrink-0 relative border-t border-white/5 pb-0 mb-0"
             style={{
-              paddingBottom: "env(safe-area-inset-bottom)"
+              paddingBottom: "0px",
+              marginBottom: "0px"
             }}
           >
             {/* Active Identity selector for admin */}

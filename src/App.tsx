@@ -1826,7 +1826,7 @@ export default function App() {
       style={backgroundStyle}
       className={`min-h-screen ${
         activeTab === 'chats' 
-          ? 'h-screen overflow-hidden bg-[#efeae2] text-[#111b21] pb-0' 
+          ? 'h-[100dvh] overflow-hidden bg-[#efeae2] text-[#111b21] pb-0' 
           : 'bg-[#300202] text-slate-100 pb-12'
       } font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pt-[54px] relative overflow-x-hidden transition-all duration-500`}
     >
@@ -2566,7 +2566,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className={`w-full ${activeTab === 'chats' ? 'max-w-none w-full px-0 h-full flex-1' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
+      <main className={`w-full ${activeTab === 'chats' ? 'max-w-none w-full px-0 h-[calc(100dvh-54px)] flex-1 overflow-hidden' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
 
         {activeTab === "correct_score" ? (
           /* CORRECT SCORE / HOME VIEW */
