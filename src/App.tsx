@@ -227,6 +227,39 @@ export default function App() {
       document.body.style.height = "100%";
       document.body.style.top = "0";
       document.body.style.left = "0";
+
+      const handleResize = () => {
+        const vv = window.visualViewport;
+        if (vv) {
+          window.scrollTo(0, 0);
+          const heightVal = `${vv.height}px`;
+          document.documentElement.style.height = heightVal;
+          document.body.style.height = heightVal;
+          document.documentElement.style.setProperty('--viewport-height', heightVal);
+        }
+      };
+
+      const vv = window.visualViewport;
+      if (vv) {
+        vv.addEventListener('resize', handleResize);
+        vv.addEventListener('scroll', handleResize);
+        handleResize();
+      }
+
+      return () => {
+        if (vv) {
+          vv.removeEventListener('resize', handleResize);
+          vv.removeEventListener('scroll', handleResize);
+        }
+        document.body.style.overflow = "";
+        document.body.style.position = "";
+        document.body.style.width = "";
+        document.body.style.height = "";
+        document.body.style.top = "";
+        document.body.style.left = "";
+        document.documentElement.style.height = "";
+        document.documentElement.style.removeProperty('--viewport-height');
+      };
     } else {
       document.body.style.overflow = "";
       document.body.style.position = "";
@@ -234,15 +267,9 @@ export default function App() {
       document.body.style.height = "";
       document.body.style.top = "";
       document.body.style.left = "";
+      document.documentElement.style.height = "";
+      document.documentElement.style.removeProperty('--viewport-height');
     }
-    return () => {
-      document.body.style.overflow = "";
-      document.body.style.position = "";
-      document.body.style.width = "";
-      document.body.style.height = "";
-      document.body.style.top = "";
-      document.body.style.left = "";
-    };
   }, [activeTab]);
 
   // Parse standalone mode on startup
@@ -1850,10 +1877,13 @@ export default function App() {
 
   return (
     <div 
-      style={backgroundStyle}
+      style={{
+        ...backgroundStyle,
+        height: activeTab === 'chats' ? 'var(--viewport-height, 100dvh)' : 'auto'
+      }}
       className={`min-h-screen ${
         activeTab === 'chats' 
-          ? 'h-[100dvh] overflow-hidden bg-[#efeae2] text-[#111b21] pb-0' 
+          ? 'overflow-hidden bg-[#efeae2] text-[#111b21] pb-0' 
           : 'bg-[#300202] text-slate-100 pb-12'
       } font-sans flex flex-col items-center justify-start selection:bg-yellow-500 selection:text-black pt-[54px] relative overflow-x-hidden transition-all duration-500`}
     >
@@ -2379,7 +2409,8 @@ export default function App() {
               <div className="flex flex-col items-start leading-tight">
                 <span className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5">
                   {activeChatPartner.username} 
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#10b981] animate-pulse" />
+                  <span className="text-[9px] text-emerald-400 font-bold lowercase tracking-normal">online</span>
                 </span>
                 {isMainAdmin && (
                   <span className="text-[10px] text-slate-300 font-mono font-medium truncate max-w-[150px] sm:max-w-[220px]">
@@ -2389,37 +2420,49 @@ export default function App() {
               </div>
             ) : (
               <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
-                {isMainAdmin ? "Client Chats" : "Chat Support"} <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
+                {isMainAdmin ? "Client Chats" : "Chat Support"}{" "}
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#10b981] animate-pulse" />
+                <span className="text-[9px] text-emerald-400 font-bold lowercase tracking-normal">online</span>
               </span>
             )
           ) : (
             <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
-              {isMainAdmin ? "Negro Admin" : "Negro Tips"} <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
+              {isMainAdmin ? "Negro Admin" : "Negro Tips"}{" "}
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#10b981] animate-pulse" />
+              <span className="text-[9px] text-emerald-400 font-bold lowercase tracking-normal">online</span>
             </span>
           )}
         </div>
 
-        <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${
-          activeTab === "chats"
-            ? "bg-[#25D366]/20 border-[#25D366]/40 text-[#25D366] shadow-[0_0_10px_rgba(37,211,102,0.25)] font-black"
-            : toggleMode === "free" 
-              ? "bg-slate-500/10 border-slate-500/20 text-slate-400" 
-              : "bg-yellow-500/10 border-[#E2FF00]/30 text-[#E2FF00] shadow-[0_0_10px_rgba(226,255,0,0.15)]"
-        }`}>
-          <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
-            activeTab === "chats" ? "bg-[#25D366]" : toggleMode === "free" ? "bg-slate-400" : "bg-[#E2FF00]"
-          }`} />
-          <span className="text-[9px] font-mono font-bold uppercase tracking-wider">
-            {activeTab === "chats" ? "SUPPORT CHAT" : toggleMode === "free" ? "FREE ACCESS" : (() => {
-              if (activeCategory) {
-                if (activeCategory.id.includes("cs")) return "CORRECT SCORE VIP";
-                if (activeCategory.id.includes("htft")) return "HT/FT VIP";
-                if (activeCategory.id.includes("elite")) return "ELITE VIP";
-                return activeCategory.title.toUpperCase();
-              }
-              return "VIP ACCESS";
-            })()}
-          </span>
+        <div className="flex items-center gap-2">
+          {/* Global Connection Online Status Text */}
+          <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full select-none">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#10B981]" />
+            <span className="text-[8.5px] font-mono font-black uppercase tracking-wider text-emerald-400">ONLINE</span>
+          </div>
+
+          <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${
+            activeTab === "chats"
+              ? "bg-[#25D366]/20 border-[#25D366]/40 text-[#25D366] shadow-[0_0_10px_rgba(37,211,102,0.25)] font-black"
+              : toggleMode === "free" 
+                ? "bg-slate-500/10 border-slate-500/20 text-slate-400" 
+                : "bg-yellow-500/10 border-[#E2FF00]/30 text-[#E2FF00] shadow-[0_0_10px_rgba(226,255,0,0.15)]"
+          }`}>
+            <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${
+              activeTab === "chats" ? "bg-[#25D366]" : toggleMode === "free" ? "bg-slate-400" : "bg-[#E2FF00]"
+            }`} />
+            <span className="text-[9px] font-mono font-bold uppercase tracking-wider">
+              {activeTab === "chats" ? "SUPPORT CHAT" : toggleMode === "free" ? "FREE ACCESS" : (() => {
+                if (activeCategory) {
+                  if (activeCategory.id.includes("cs")) return "CORRECT SCORE VIP";
+                  if (activeCategory.id.includes("htft")) return "HT/FT VIP";
+                  if (activeCategory.id.includes("elite")) return "ELITE VIP";
+                  return activeCategory.title.toUpperCase();
+                }
+                return "VIP ACCESS";
+              })()}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -2593,7 +2636,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content Area */}
-      <main className={`w-full ${activeTab === 'chats' ? 'max-w-none w-full px-0 h-[calc(100dvh-54px)] flex-1 overflow-hidden' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
+      <main className={`w-full ${activeTab === 'chats' ? 'max-w-none w-full px-0 h-[calc(var(--viewport-height,100dvh)-54px)] flex-1 overflow-hidden' : 'max-w-[480px] px-4'} flex flex-col items-center z-10`}>
 
         {activeTab === "correct_score" ? (
           /* CORRECT SCORE / HOME VIEW */
