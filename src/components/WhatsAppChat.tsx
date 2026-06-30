@@ -108,6 +108,8 @@ interface WhatsAppChatProps {
   sendFCMNotificationProgrammatic: (titleText: string, messageText: string) => Promise<void>;
   selectedUserId?: string | null;
   setSelectedUserId?: (id: string | null) => void;
+  adminSettings: { isOnline: boolean; customGreeting: string };
+  setAdminSettings: React.Dispatch<React.SetStateAction<{ isOnline: boolean; customGreeting: string }>>;
 }
 
 export default function WhatsAppChat({
@@ -120,7 +122,9 @@ export default function WhatsAppChat({
   db,
   sendFCMNotificationProgrammatic,
   selectedUserId: externalSelectedUserId,
-  setSelectedUserId: externalSetSelectedUserId
+  setSelectedUserId: externalSetSelectedUserId,
+  adminSettings,
+  setAdminSettings
 }: WhatsAppChatProps) {
   // Chat input
   const [inputText, setInputText] = useState("");
@@ -613,6 +617,80 @@ export default function WhatsAppChat({
                 Agents Panel
               </button>
             </div>
+
+            {/* Real-time configuration controls for Admin */}
+            <div className="bg-[#ffffff] border border-[#e9edef] p-3 rounded-xl space-y-3 shadow-sm text-xs font-sans">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-[#111b21] flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${adminSettings.isOnline ? 'bg-[#00a884] animate-pulse shadow-[0_0_6px_#00a884]' : 'bg-slate-400'}`} />
+                  Set Admin Status
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const nextOnline = !adminSettings.isOnline;
+                    try {
+                      await setDoc(doc(db, "admin_settings", "global"), {
+                        ...adminSettings,
+                        isOnline: nextOnline
+                      });
+                      setAdminSettings(prev => ({ ...prev, isOnline: nextOnline }));
+                    } catch (err) {
+                      console.error("Error updating online status:", err);
+                    }
+                  }}
+                  className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
+                    adminSettings.isOnline 
+                      ? "bg-[#00a884] text-white hover:bg-[#009171] shadow-sm" 
+                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  }`}
+                >
+                  {adminSettings.isOnline ? "Online" : "Offline"}
+                </button>
+              </div>
+              
+              <div className="space-y-1.5">
+                <label className="text-[9px] text-slate-500 font-black uppercase block tracking-wider">
+                  Floating Pop-up Greeting
+                </label>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={adminSettings.customGreeting}
+                    onChange={(e) => {
+                      const text = e.target.value;
+                      setAdminSettings(prev => ({ ...prev, customGreeting: text }));
+                    }}
+                    onBlur={async () => {
+                      try {
+                        await setDoc(doc(db, "admin_settings", "global"), {
+                          ...adminSettings,
+                        });
+                      } catch (err) {
+                        console.error("Error saving custom greeting:", err);
+                      }
+                    }}
+                    placeholder="e.g. Hi👋, how can I help you?"
+                    className="flex-1 bg-[#f0f2f5] border border-[#e9edef] px-2.5 py-1.5 rounded-lg text-xs font-bold text-[#111b21] placeholder-slate-400 focus:outline-none focus:border-[#00a884] focus:bg-white transition-all font-sans"
+                  />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await setDoc(doc(db, "admin_settings", "global"), {
+                          ...adminSettings,
+                        });
+                      } catch (err) {
+                        console.error("Error saving custom greeting:", err);
+                      }
+                    }}
+                    className="bg-[#00a884] hover:bg-[#009171] text-white px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase cursor-pointer transition-all active:scale-95"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
             
             {/* Search Input */}
             <div className="relative">
@@ -688,7 +766,53 @@ export default function WhatsAppChat({
       {/* CHAT MAIN CONVERSATION WINDOW */}
       <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden">
         
-
+        {/* CONVERSATION TOP BAR */}
+        {(!isMainAdmin || selectedUserId) && (
+          <div className="bg-[#f0f2f5] border-b border-[#e9edef] px-4 py-2.5 flex items-center justify-between shrink-0 z-30 shadow-sm select-none">
+            <div className="flex items-center gap-3">
+              {isMainAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedUserId(null)}
+                  className="md:hidden p-1.5 rounded-full hover:bg-black/5 text-slate-700 cursor-pointer mr-1"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+              )}
+              <div className={`w-8 h-8 rounded-full ${isMainAdmin && activePartner?.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-[#00a884]"} flex items-center justify-center text-white font-extrabold text-xs uppercase shadow-sm shrink-0`}>
+                {isMainAdmin ? (activePartner?.username?.[0] || "C") : "N"}
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-black text-[#111b21] uppercase tracking-wide flex items-center gap-1.5 leading-tight truncate">
+                  {isMainAdmin ? activePartner?.username : "Negro Tips Support"}
+                  {!isMainAdmin && <ShieldCheck className="w-3.5 h-3.5 text-[#00a884] fill-white shrink-0" />}
+                </h3>
+                <p className="text-[9px] text-[#667781] leading-none mt-0.5 truncate">
+                  {isMainAdmin ? activePartner?.email : "Official Support Agent Team"}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {/* If user: they see the Admin/Support is online (show admin online status to users only) */}
+              {!isMainAdmin && (
+                <div className={`flex items-center gap-1 ${adminSettings.isOnline ? "bg-[#00a884]/10 border border-[#00a884]/20 text-[#00a884]" : "bg-slate-500/10 border-slate-500/20 text-slate-500"} px-2 py-0.5 rounded-full`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-[#00a884] animate-pulse" : "bg-slate-400"}`} />
+                  <span className="text-[8px] font-mono font-bold uppercase tracking-wider">
+                    {adminSettings.isOnline ? "Support Online" : "Support Offline"}
+                  </span>
+                </div>
+              )}
+              {/* If admin: they should see user online status only in the chat body */}
+              {isMainAdmin && selectedUserId && (
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_#10B981]" />
+                  <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-emerald-600">Client Online</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* USER BANNER FOR ORDER STATUS */}
         {!isMainAdmin && (() => {

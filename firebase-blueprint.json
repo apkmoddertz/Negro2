@@ -72,6 +72,16 @@
         "adminTyping": { "type": "boolean" },
         "adminLastTyped": { "type": "integer" }
       }
+    },
+    "AdminSettings": {
+      "title": "Admin Settings",
+      "description": "Global admin configuration options",
+      "type": "object",
+      "properties": {
+        "isOnline": { "type": "boolean" },
+        "customGreeting": { "type": "string" }
+      },
+      "required": ["isOnline", "customGreeting"]
     }
   },
   "firestore": {
@@ -94,6 +104,10 @@
     "/typing_states/{userId}": {
       "schema": "TypingState",
       "description": "Real-time typing indicator states"
+    },
+    "/admin_settings/{settingId}": {
+      "schema": "AdminSettings",
+      "description": "Global admin configuration options"
     }
   }
 }

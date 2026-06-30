@@ -123,6 +123,13 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
+  // Admin Global Settings
+  const [adminSettings, setAdminSettings] = useState<{ isOnline: boolean; customGreeting: string }>({
+    isOnline: true,
+    customGreeting: "Hi 👋, feel free to ask any questions!"
+  });
+  const [showGreetingBubble, setShowGreetingBubble] = useState(true);
+
   // Proof and User VIP Management States
   const [userProofs, setUserProofs] = useState<any[]>([]);
   const [allProofs, setAllProofs] = useState<any[]>([]);
@@ -349,6 +356,28 @@ export default function App() {
       setAuthLoading(false);
     });
 
+    return () => unsubscribe();
+  }, []);
+
+  // 1b. Real-time subscription for global admin settings
+  useEffect(() => {
+    const docRef = doc(db, "admin_settings", "global");
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setAdminSettings({
+          isOnline: data.isOnline !== false, // default true
+          customGreeting: data.customGreeting || "Hi 👋, feel free to ask any questions!"
+        });
+      } else {
+        setAdminSettings({
+          isOnline: true,
+          customGreeting: "Hi 👋, feel free to ask any questions!"
+        });
+      }
+    }, (err) => {
+      console.error("Error listening to admin settings:", err);
+    });
     return () => unsubscribe();
   }, []);
 
@@ -2409,8 +2438,14 @@ export default function App() {
               <div className="flex flex-col items-start leading-tight">
                 <span className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5">
                   {activeChatPartner.username} 
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#10b981] animate-pulse" />
-                  <span className="text-[9px] text-emerald-400 font-bold lowercase tracking-normal">online</span>
+                  {!isMainAdmin && (
+                    <>
+                      <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-slate-400"} inline-block`} />
+                      <span className={`text-[9px] ${adminSettings.isOnline ? "text-emerald-400" : "text-slate-400"} font-bold lowercase tracking-normal`}>
+                        {adminSettings.isOnline ? "online" : "offline"}
+                      </span>
+                    </>
+                  )}
                 </span>
                 {isMainAdmin && (
                   <span className="text-[10px] text-slate-300 font-mono font-medium truncate max-w-[150px] sm:max-w-[220px]">
@@ -2421,25 +2456,41 @@ export default function App() {
             ) : (
               <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
                 {isMainAdmin ? "Client Chats" : "Chat Support"}{" "}
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#10b981] animate-pulse" />
-                <span className="text-[9px] text-emerald-400 font-bold lowercase tracking-normal">online</span>
+                {!isMainAdmin && (
+                  <>
+                    <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-slate-400"} inline-block`} />
+                    <span className={`text-[9px] ${adminSettings.isOnline ? "text-emerald-400" : "text-slate-400"} font-bold lowercase tracking-normal`}>
+                      {adminSettings.isOnline ? "online" : "offline"}
+                    </span>
+                  </>
+                )}
               </span>
             )
           ) : (
             <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
               {isMainAdmin ? "Negro Admin" : "Negro Tips"}{" "}
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#10b981] animate-pulse" />
-              <span className="text-[9px] text-emerald-400 font-bold lowercase tracking-normal">online</span>
+              {!isMainAdmin && (
+                <>
+                  <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-slate-400"} inline-block`} />
+                  <span className={`text-[9px] ${adminSettings.isOnline ? "text-emerald-400" : "text-slate-400"} font-bold lowercase tracking-normal`}>
+                    {adminSettings.isOnline ? "online" : "offline"}
+                  </span>
+                </>
+              )}
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
           {/* Global Connection Online Status Text */}
-          <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full select-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_6px_#10B981]" />
-            <span className="text-[8.5px] font-mono font-black uppercase tracking-wider text-emerald-400">ONLINE</span>
-          </div>
+          {!isMainAdmin && (
+            <div className={`flex items-center gap-1.5 ${adminSettings.isOnline ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" : "bg-slate-500/10 border-slate-500/20 text-slate-400"} px-2 py-0.5 rounded-full select-none`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 animate-pulse shadow-[0_0_6px_#10B981]" : "bg-slate-400"}`} />
+              <span className="text-[8.5px] font-mono font-black uppercase tracking-wider">
+                {adminSettings.isOnline ? "ONLINE" : "OFFLINE"}
+              </span>
+            </div>
+          )}
 
           <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${
             activeTab === "chats"
@@ -3616,6 +3667,8 @@ export default function App() {
               sendFCMNotificationProgrammatic={sendFCMNotificationProgrammatic}
               selectedUserId={selectedChatUserId}
               setSelectedUserId={setSelectedChatUserId}
+              adminSettings={adminSettings}
+              setAdminSettings={setAdminSettings}
             />
           ) : (
             <div className="bg-[#121921]/90 border border-white/5 p-8 rounded-2xl text-center space-y-4 max-w-md mx-auto my-12 shadow-2xl">
@@ -4262,27 +4315,66 @@ export default function App() {
 
       {/* Floating Action Button for WhatsApp Chat Support */}
       {currentUser && activeTab !== "chats" && !openedCategoryId && (
-        <button
-          onClick={() => setActiveTab("chats")}
-          className={`fixed ${isMainAdmin ? "bottom-24" : "bottom-6"} right-6 z-50 bg-[#25D366] hover:bg-[#20ba5a] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-[0_4px_25px_rgba(37,211,102,0.55)] active:scale-95 hover:scale-105 transition-all cursor-pointer border border-white/10`}
-          title="Open Chat Support"
-        >
-          <div className="relative">
-            <MessageSquare className="w-6 h-6 text-white" />
-            {(() => {
-              const count = isMainAdmin 
-                ? adminAllMessages.filter(m => m.senderId !== "admin" && !m.readByAdmin).length
-                : userMessages.filter(m => m.senderId === "admin" && !m.readByUser).length;
-              return count > 0 ? (
-                <span className="absolute -top-2.5 -right-2.5 bg-red-600 text-white text-[9px] w-5 h-5 rounded-full flex items-center justify-center font-black animate-bounce font-mono shadow-md border border-[#25D366]">
-                  {count}
-                </span>
-              ) : (
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
-              );
-            })()}
-          </div>
-        </button>
+        <div className={`fixed ${isMainAdmin ? "bottom-24" : "bottom-6"} right-6 z-50 flex items-end gap-3 pointer-events-none`}>
+          {/* Pop-up message near chat floating icon */}
+          <AnimatePresence>
+            {!isMainAdmin && adminSettings.isOnline && showGreetingBubble && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8, x: 20 }}
+                animate={{ opacity: 1, scale: 1, x: 0 }}
+                exit={{ opacity: 0, scale: 0.8, x: 20 }}
+                transition={{ delay: 1, duration: 0.4, type: "spring", stiffness: 120 }}
+                className="bg-[#ffffff] text-slate-800 px-3.5 py-2 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.18)] border border-slate-100 max-w-[210px] relative pointer-events-auto select-none mb-1 shrink-0 font-sans"
+              >
+                {/* Micro Close Button */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowGreetingBubble(false);
+                  }}
+                  className="absolute -top-1.5 -right-1.5 bg-slate-100 text-slate-500 hover:bg-slate-200 w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black cursor-pointer border border-slate-200/50 shadow-sm transition-all"
+                  title="Dismiss greeting"
+                >
+                  ✕
+                </button>
+                {/* Status indicator */}
+                <div className="flex items-center gap-1 mb-1 select-none">
+                  <span className="w-1 h-1 rounded-full bg-[#00a884] animate-pulse" />
+                  <span className="text-[7.5px] font-mono font-black tracking-wider text-[#00a884] uppercase">Support Agent</span>
+                </div>
+                <p className="text-[10px] font-bold text-[#111b21] leading-tight">
+                  {adminSettings.customGreeting}
+                </p>
+                {/* Bubble tail */}
+                <div className="absolute right-0 bottom-4.5 translate-x-1.5 rotate-45 w-2 h-2 bg-white border-r border-t border-slate-100" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("chats")}
+            className="bg-[#25D366] hover:bg-[#20ba5a] text-white w-14 h-14 rounded-full flex items-center justify-center shadow-[0_4px_25px_rgba(37,211,102,0.55)] active:scale-95 hover:scale-105 transition-all cursor-pointer border border-white/10 pointer-events-auto shrink-0"
+            title="Open Chat Support"
+          >
+            <div className="relative">
+              <MessageSquare className="w-6 h-6 text-white" />
+              {(() => {
+                const count = isMainAdmin 
+                  ? adminAllMessages.filter(m => m.senderId !== "admin" && !m.readByAdmin).length
+                  : userMessages.filter(m => m.senderId === "admin" && !m.readByUser).length;
+                return count > 0 ? (
+                  <span className="absolute -top-2.5 -right-2.5 bg-red-600 text-white text-[9px] w-5 h-5 rounded-full flex items-center justify-center font-black animate-bounce font-mono shadow-md border border-[#25D366]">
+                    {count}
+                  </span>
+                ) : (
+                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                );
+              })()}
+            </div>
+          </button>
+        </div>
       )}
 
       {/* Custom Confirmation Dialog for Deletions */}
