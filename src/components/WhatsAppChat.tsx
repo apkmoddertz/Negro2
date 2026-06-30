@@ -155,6 +155,25 @@ export default function WhatsAppChat({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  // Smooth Drag and Momentum Scrolling for PWA & Touch support
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingChat = useRef(false);
+  const dragStartY = useRef(0);
+  const dragStartScrollTop = useRef(0);
+  const dragVelocity = useRef(0);
+  const dragLastY = useRef(0);
+  const dragLastTime = useRef(0);
+  const dragAnimFrame = useRef<number | null>(null);
+
+  // Clean up animation frames on unmount
+  useEffect(() => {
+    return () => {
+      if (dragAnimFrame.current) {
+        cancelAnimationFrame(dragAnimFrame.current);
+      }
+    };
+  }, []);
+
   // Auto-resize textarea to fit content up to 6 lines (approx 144px)
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -536,6 +555,164 @@ export default function WhatsAppChat({
     setShowUrlShortcutModal(false);
     setUrlShortcutTitle("");
     setUrlShortcutLink("");
+  };
+
+  const handleChatTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    isDraggingChat.current = true;
+    const touch = e.touches[0];
+    dragStartY.current = touch.clientY;
+    dragStartScrollTop.current = container.scrollTop;
+    dragLastY.current = touch.clientY;
+    dragLastTime.current = Date.now();
+    dragVelocity.current = 0;
+
+    if (dragAnimFrame.current) {
+      cancelAnimationFrame(dragAnimFrame.current);
+      dragAnimFrame.current = null;
+    }
+  };
+
+  const handleChatTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDraggingChat.current) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const touch = e.touches[0];
+    const deltaY = touch.clientY - dragStartY.current;
+    
+    // Smooth custom drag scrolling
+    container.scrollTop = dragStartScrollTop.current - deltaY;
+
+    // Track velocity
+    const now = Date.now();
+    const dt = now - dragLastTime.current;
+    if (dt > 0) {
+      const currentDeltaY = touch.clientY - dragLastY.current;
+      dragVelocity.current = (currentDeltaY / dt) * 12;
+    }
+    dragLastY.current = touch.clientY;
+    dragLastTime.current = now;
+
+    // Prevent default browser behavior (like pulling-to-refresh!)
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+  };
+
+  const handleChatTouchEnd = () => {
+    if (!isDraggingChat.current) return;
+    isDraggingChat.current = false;
+
+    const container = messagesContainerRef.current;
+    if (!container || Math.abs(dragVelocity.current) < 0.5) return;
+
+    let velocity = dragVelocity.current;
+    const decay = 0.96;
+
+    const scrollStep = () => {
+      if (Math.abs(velocity) < 0.1 || isDraggingChat.current) {
+        if (dragAnimFrame.current) {
+          cancelAnimationFrame(dragAnimFrame.current);
+          dragAnimFrame.current = null;
+        }
+        return;
+      }
+
+      container.scrollTop -= velocity;
+      velocity *= decay;
+      dragAnimFrame.current = requestAnimationFrame(scrollStep);
+    };
+
+    dragAnimFrame.current = requestAnimationFrame(scrollStep);
+  };
+
+  const handleChatMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // Left click only
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const target = e.target as HTMLElement;
+    if (
+      target.closest("button") || 
+      target.closest("a") || 
+      target.closest("input") || 
+      target.closest("textarea") ||
+      target.closest(".cursor-pointer")
+    ) {
+      return;
+    }
+
+    isDraggingChat.current = true;
+    dragStartY.current = e.clientY;
+    dragStartScrollTop.current = container.scrollTop;
+    dragLastY.current = e.clientY;
+    dragLastTime.current = Date.now();
+    dragVelocity.current = 0;
+
+    if (dragAnimFrame.current) {
+      cancelAnimationFrame(dragAnimFrame.current);
+      dragAnimFrame.current = null;
+    }
+    
+    container.style.cursor = "grabbing";
+    container.style.userSelect = "none";
+  };
+
+  const handleChatMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDraggingChat.current) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const deltaY = e.clientY - dragStartY.current;
+    container.scrollTop = dragStartScrollTop.current - deltaY;
+
+    const now = Date.now();
+    const dt = now - dragLastTime.current;
+    if (dt > 0) {
+      const currentDeltaY = e.clientY - dragLastY.current;
+      dragVelocity.current = (currentDeltaY / dt) * 12;
+    }
+    dragLastY.current = e.clientY;
+    dragLastTime.current = now;
+    
+    if (e.cancelable) {
+      e.preventDefault();
+    }
+  };
+
+  const handleChatMouseUpOrLeave = () => {
+    if (!isDraggingChat.current) return;
+    isDraggingChat.current = false;
+
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.style.cursor = "grab";
+      container.style.userSelect = "";
+    }
+
+    if (!container || Math.abs(dragVelocity.current) < 0.5) return;
+
+    let velocity = dragVelocity.current;
+    const decay = 0.96;
+
+    const scrollStep = () => {
+      if (Math.abs(velocity) < 0.1 || isDraggingChat.current) {
+        if (dragAnimFrame.current) {
+          cancelAnimationFrame(dragAnimFrame.current);
+          dragAnimFrame.current = null;
+        }
+        return;
+      }
+
+      container.scrollTop -= velocity;
+      velocity *= decay;
+      dragAnimFrame.current = requestAnimationFrame(scrollStep);
+    };
+
+    dragAnimFrame.current = requestAnimationFrame(scrollStep);
   };
 
   const handleMessageInputChange = (val: string) => {
@@ -946,11 +1123,20 @@ export default function WhatsAppChat({
         
         {/* MESSAGES SCROLL CONTAINER with genuine WhatsApp Doodle Wallpaper look */}
         <div 
+          ref={messagesContainerRef}
           id="chat-messages-container"
-          className="flex-1 overflow-y-auto p-4 space-y-3 relative scrollbar-none"
+          className="flex-1 overflow-y-auto p-4 space-y-3 relative scrollbar-none overscroll-contain cursor-grab select-none"
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          onTouchStart={handleChatTouchStart}
+          onTouchMove={handleChatTouchMove}
+          onTouchEnd={handleChatTouchEnd}
+          onMouseDown={handleChatMouseDown}
+          onMouseMove={handleChatMouseMove}
+          onMouseUp={handleChatMouseUpOrLeave}
+          onMouseLeave={handleChatMouseUpOrLeave}
+          style={{ overscrollBehaviorY: "contain" }}
         >
           {/* Faint Background image overlay to prevent opacity bleeding to messages */}
           <div 
