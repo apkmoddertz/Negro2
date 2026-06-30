@@ -2438,12 +2438,17 @@ export default function App() {
               <div className="flex flex-col items-start leading-tight">
                 <span className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-1.5">
                   {activeChatPartner.username} 
-                  {!isMainAdmin && (
+                  {!isMainAdmin ? (
                     <>
                       <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-slate-400"} inline-block`} />
                       <span className={`text-[9px] ${adminSettings.isOnline ? "text-emerald-400" : "text-slate-400"} font-bold lowercase tracking-normal`}>
                         {adminSettings.isOnline ? "online" : "offline"}
                       </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block shadow-[0_0_8px_#10b981] animate-pulse" />
+                      <span className="text-[9px] text-emerald-400 font-bold lowercase tracking-normal">client online</span>
                     </>
                   )}
                 </span>

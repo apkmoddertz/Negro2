@@ -766,53 +766,7 @@ export default function WhatsAppChat({
       {/* CHAT MAIN CONVERSATION WINDOW */}
       <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden">
         
-        {/* CONVERSATION TOP BAR */}
-        {(!isMainAdmin || selectedUserId) && (
-          <div className="bg-[#f0f2f5] border-b border-[#e9edef] px-4 py-2.5 flex items-center justify-between shrink-0 z-30 shadow-sm select-none">
-            <div className="flex items-center gap-3">
-              {isMainAdmin && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedUserId(null)}
-                  className="md:hidden p-1.5 rounded-full hover:bg-black/5 text-slate-700 cursor-pointer mr-1"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-              )}
-              <div className={`w-8 h-8 rounded-full ${isMainAdmin && activePartner?.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-[#00a884]"} flex items-center justify-center text-white font-extrabold text-xs uppercase shadow-sm shrink-0`}>
-                {isMainAdmin ? (activePartner?.username?.[0] || "C") : "N"}
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-xs font-black text-[#111b21] uppercase tracking-wide flex items-center gap-1.5 leading-tight truncate">
-                  {isMainAdmin ? activePartner?.username : "Negro Tips Support"}
-                  {!isMainAdmin && <ShieldCheck className="w-3.5 h-3.5 text-[#00a884] fill-white shrink-0" />}
-                </h3>
-                <p className="text-[9px] text-[#667781] leading-none mt-0.5 truncate">
-                  {isMainAdmin ? activePartner?.email : "Official Support Agent Team"}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {/* If user: they see the Admin/Support is online (show admin online status to users only) */}
-              {!isMainAdmin && (
-                <div className={`flex items-center gap-1 ${adminSettings.isOnline ? "bg-[#00a884]/10 border border-[#00a884]/20 text-[#00a884]" : "bg-slate-500/10 border-slate-500/20 text-slate-500"} px-2 py-0.5 rounded-full`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-[#00a884] animate-pulse" : "bg-slate-400"}`} />
-                  <span className="text-[8px] font-mono font-bold uppercase tracking-wider">
-                    {adminSettings.isOnline ? "Support Online" : "Support Offline"}
-                  </span>
-                </div>
-              )}
-              {/* If admin: they should see user online status only in the chat body */}
-              {isMainAdmin && selectedUserId && (
-                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_6px_#10B981]" />
-                  <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-emerald-600">Client Online</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* CONVERSATION TOP BAR REMOVED - USING MAIN TOP HEADER */}
 
         {/* USER BANNER FOR ORDER STATUS */}
         {!isMainAdmin && (() => {
@@ -1234,7 +1188,7 @@ export default function WhatsAppChat({
                   onChange={(e) => handleMessageInputChange(e.target.value)}
                   placeholder="Type your message..."
                   rows={1}
-                  className="w-full pl-4 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#00a884] placeholder-slate-400 transition-all shadow-sm resize-none max-h-[144px] overflow-y-auto block leading-relaxed"
+                  className="w-full pl-4 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[16px] md:text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#00a884] placeholder-slate-400 transition-all shadow-sm resize-none max-h-[144px] overflow-y-auto block leading-relaxed font-sans"
                   style={{ height: "38px" }}
                 />
               </div>
