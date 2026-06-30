@@ -19,7 +19,7 @@ import {
   Trash2,
   Settings
 } from "lucide-react";
-import { doc, setDoc, collection, onSnapshot } from "firebase/firestore";
+import { doc, setDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
 
 export interface Agent {
@@ -101,6 +101,10 @@ export default function WhatsAppChat({
   const [selectedAgentId, setSelectedAgentId] = useState<string>("sophia");
   const [showAgentsModal, setShowAgentsModal] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+
+  // Subscription Orders states
+  const [userOrders, setUserOrders] = useState<any[]>([]);
+  const [allOrders, setAllOrders] = useState<any[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const agentFileInputRef = useRef<HTMLInputElement>(null);
@@ -206,20 +210,6 @@ export default function WhatsAppChat({
     }
   };
 
-  // Close emoji picker when clicking outside
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest("#emoji-picker-container") && !target.closest("#emoji-btn-trigger")) {
-        setShowEmojiPicker(false);
-      }
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, []);
-
   // Sync and seed support agents
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, "agents"), (snapshot) => {
@@ -248,6 +238,53 @@ export default function WhatsAppChat({
     });
     return () => unsubscribe();
   }, [db, isMainAdmin]);
+
+  // Sync subscription orders
+  useEffect(() => {
+    if (!currentUser) {
+      setUserOrders([]);
+      return;
+    }
+    if (isMainAdmin) {
+      const q = collection(db, "orders");
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setAllOrders(list);
+        } else {
+          setAllOrders([]);
+        }
+      }, (err) => {
+        console.error("Error loading all orders in chat:", err);
+      });
+      return () => unsubscribe();
+    } else {
+      const q = query(collection(db, "orders"), where("userId", "==", currentUser.uid));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          list.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          setUserOrders(list);
+        } else {
+          setUserOrders([]);
+        }
+      }, (err) => {
+        console.error("Error loading user orders in chat:", err);
+      });
+      return () => unsubscribe();
+    }
+  }, [currentUser, isMainAdmin, db]);
+  
+  // Auto-select agent assigned to the selected client
+  useEffect(() => {
+    if (isMainAdmin && selectedUserId && allOrders.length > 0) {
+      const activeOrder = allOrders.find(o => o.userId === selectedUserId && o.status === "active");
+      if (activeOrder && activeOrder.assignedAgentId) {
+        setSelectedAgentId(activeOrder.assignedAgentId);
+      }
+    }
+  }, [selectedUserId, allOrders, isMainAdmin]);
   
   // Selected user for Admin chat
   const [localSelectedUserId, localSetSelectedUserId] = useState<string | null>(null);
@@ -537,6 +574,162 @@ export default function WhatsAppChat({
       {/* CHAT MAIN CONVERSATION WINDOW */}
       <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden">
         
+        {/* CONVERSATION TOP BAR */}
+        {(!isMainAdmin || selectedUserId) && (
+          <div className="bg-[#f0f2f5] border-b border-[#e9edef] px-4 py-3 flex items-center justify-between shrink-0 z-30 shadow-sm select-none">
+            <div className="flex items-center gap-3">
+              {isMainAdmin && (
+                <button
+                  onClick={() => setSelectedUserId(null)}
+                  className="md:hidden p-1.5 rounded-full hover:bg-slate-200 text-slate-600 cursor-pointer mr-1"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
+              <div className={`w-9 h-9 rounded-full ${isMainAdmin && activePartner?.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-emerald-500"} flex items-center justify-center text-slate-800 font-extrabold text-xs uppercase shadow-sm shrink-0`}>
+                {isMainAdmin ? (activePartner?.username?.[0] || "C") : "N"}
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-black text-[#111b21] uppercase tracking-wide flex items-center gap-1.5 leading-tight truncate">
+                  {isMainAdmin ? activePartner?.username : "Negro Tips Support"}
+                  {!isMainAdmin && <ShieldCheck className="w-3.5 h-3.5 text-[#00a884] fill-white shrink-0" />}
+                </h3>
+                <p className="text-[9px] text-[#667781] leading-none mt-0.5 truncate">
+                  {isMainAdmin ? activePartner?.email : "Official Support Agent Team"}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 bg-[#00a884]/10 border border-[#00a884]/20 px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse" />
+                <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-[#00a884]">Secure SSL Chat</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* USER BANNER FOR ORDER STATUS */}
+        {!isMainAdmin && (() => {
+          const pendingOrder = userOrders.find(o => o.status === "pending_agent");
+          const activeOrder = userOrders.find(o => o.status === "active");
+          
+          if (pendingOrder) {
+            return (
+              <div className="bg-gradient-to-r from-amber-500/15 via-amber-600/10 to-amber-500/5 border-b border-amber-500/20 px-4 py-3 flex items-start gap-3 shrink-0 z-20 animate-fade-in select-none">
+                <div className="w-7 h-7 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 shrink-0 mt-0.5">
+                  <Clock className="w-3.5 h-3.5 animate-spin" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Order #{pendingOrder.id.substring(6, 12)} Pending Connection</h4>
+                  <p className="text-[9px] text-amber-950 leading-normal mt-0.5 font-bold">
+                    Your VIP order for <span className="text-amber-800">"{pendingOrder.planName}"</span> has been created. Please wait while a support agent connects to provide your secure checkout link and activate your subscription.
+                  </p>
+                </div>
+              </div>
+            );
+          } else if (activeOrder) {
+            const agent = agents.find(a => a.id === activeOrder.assignedAgentId) || DEFAULT_AGENTS.find(a => a.id === "sophia");
+            return (
+              <div className="bg-gradient-to-r from-emerald-500/15 via-emerald-600/10 to-emerald-500/5 border-b border-emerald-500/20 px-4 py-3 flex items-start gap-3 shrink-0 z-20 animate-fade-in select-none">
+                <div className="w-7 h-7 rounded-full overflow-hidden border border-emerald-500/30 shrink-0 mt-0.5">
+                  <img src={activeOrder.assignedAgentImage || agent.imageUrl} alt={activeOrder.assignedAgentName || agent.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-[10px] font-black uppercase text-emerald-700 tracking-wider">Connected with {activeOrder.assignedAgentName || agent.name}</h4>
+                  <p className="text-[9px] text-emerald-950 leading-normal mt-0.5 font-bold">
+                    Support Agent <span className="text-emerald-800">{activeOrder.assignedAgentName || agent.name} ({activeOrder.assignedAgentRole || agent.role})</span> is now assigned to assist you. Please wait for payment coordinates.
+                  </p>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+
+        {/* ADMIN AGENT ASSIGNMENT OVERLAY PANEL */}
+        {isMainAdmin && selectedUserId && (() => {
+          const activeOrder = allOrders.find(o => o.userId === selectedUserId && o.status === "pending_agent");
+          if (activeOrder) {
+            return (
+              <div className="bg-gradient-to-r from-[#005c4b]/95 via-[#008069]/90 to-[#00a884]/85 border-b border-[#00a884]/30 text-white p-4.5 flex flex-col gap-3 shrink-0 z-20 shadow-md animate-fade-in select-none">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center text-[#E2FF00] shrink-0 mt-0.5">
+                    <Sparkles className="w-4 h-4 animate-pulse" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-[#E2FF00]">⚡ Pending Subscription Order Received</h4>
+                    <p className="text-[10.5px] text-emerald-50 leading-normal mt-0.5 font-sans font-medium">
+                      Client <span className="font-extrabold text-white">{activePartner?.username}</span> created an order for <span className="font-extrabold text-[#E2FF00]">"{activeOrder.planName}"</span> at <span className="font-mono text-white">{activeOrder.price}</span>. Select which support agent should handle this transaction:
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+                  {agents.map((agent) => {
+                    return (
+                      <button
+                        key={agent.id}
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            // Update order status and assign agent
+                            await setDoc(doc(db, "orders", activeOrder.id), {
+                              status: "active",
+                              assignedAgentId: agent.id,
+                              assignedAgentName: agent.name,
+                              assignedAgentRole: agent.role,
+                              assignedAgentImage: agent.imageUrl,
+                              assignedAt: new Date().toISOString()
+                            }, { merge: true });
+
+                            // Auto-post welcoming message from this agent in the chats
+                            const messageId = "msg_welcome_" + Date.now() + "_" + Math.random().toString(36).substring(2, 5);
+                            await setDoc(doc(db, "chats", messageId), {
+                              id: messageId,
+                              userId: selectedUserId,
+                              senderId: "admin",
+                              senderName: "Admin",
+                              text: `Hello! I am ${agent.name} (${agent.role}). I am assigned to assist you with your order for "${activeOrder.planName}". Let me provide you the payment coordinates to complete your transaction securely.`,
+                              message: `Hello! I am ${agent.name} (${agent.role}). I am assigned to assist you with your order for "${activeOrder.planName}". Let me provide you the payment coordinates to complete your transaction securely.`,
+                              timestamp: new Date().toISOString(),
+                              readByAdmin: true,
+                              readByUser: false,
+                              senderType: "admin",
+                              agentName: agent.name,
+                              agentRole: agent.role,
+                              agentImage: agent.imageUrl
+                            });
+
+                            // Select this agent as reply identity automatically
+                            setSelectedAgentId(agent.id);
+
+                            // Send FCM notice to user
+                            await sendFCMNotificationProgrammatic(
+                              `Support Agent ${agent.name} Connected`,
+                              `I am ready to help you complete your VIP purchase. Please check chat.`
+                            );
+                          } catch (err) {
+                            console.error("Error assigning agent:", err);
+                          }
+                        }}
+                        className="bg-white/10 hover:bg-[#E2FF00] hover:text-black border border-white/15 p-2 rounded-xl flex items-center gap-2 text-left transition-all duration-300 cursor-pointer active:scale-95 group shrink-0"
+                      >
+                        <img src={agent.imageUrl} alt={agent.name} className="w-7 h-7 rounded-full object-cover shrink-0 border border-white/20" />
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase truncate group-hover:text-black leading-none">{agent.name}</p>
+                          <p className="text-[7.5px] opacity-70 group-hover:text-black leading-none mt-1 uppercase tracking-wider font-semibold truncate">{agent.role.replace("Support ", "")}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+        
         {/* MESSAGES SCROLL CONTAINER with genuine WhatsApp Doodle Wallpaper look */}
         <div 
           id="chat-messages-container"
@@ -571,7 +764,7 @@ export default function WhatsAppChat({
                 <MessageSquare className="w-8 h-8" />
               </div>
               <div className="max-w-[280px]">
-                <h4 className="text-sm font-black uppercase text-[#111b21] tracking-wider">Negro Support Chats</h4>
+                <h4 className="text-sm font-black uppercase text-[#111b21] tracking-wider">Chat Support Panel</h4>
                 <p className="text-[10px] text-[#667781] mt-1 leading-relaxed">
                   Select any active client from the left menu panel to view transaction histories and respond instantly.
                 </p>

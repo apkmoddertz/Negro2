@@ -171,9 +171,14 @@ export default function App() {
   const [matchStatus, setMatchStatus] = useState<"win" | "lose" | "pending">("pending");
   const [matchDate, setMatchDate] = useState(""); // YYYY-MM-DD for editing
   const [matchTime, setMatchTime] = useState(""); // HH:MM for editing
+  const [editMatchCategoryId, setEditMatchCategoryId] = useState(""); // Category ID for editing
 
   const [showAddTicket, setShowAddTicket] = useState(false);
   const [newTicketDate, setNewTicketDate] = useState("");
+  
+  // Subscription checkout states
+  const [pendingOrderConfirmation, setPendingOrderConfirmation] = useState<any | null>(null);
+  const [creatingOrder, setCreatingOrder] = useState(false);
 
   // Deletion state to avoid native confirm dialogs (blocked in some iframe configurations)
   const [deleteConfirm, setDeleteConfirm] = useState<{
@@ -787,6 +792,7 @@ export default function App() {
   // 6. Edit Match Form Actions
   const startEditMatch = (categoryId: string, ticketIndex: number, matchIndex: number, match: Match) => {
     setEditingMatch({ categoryId, ticketIndex, matchIndex, match });
+    setEditMatchCategoryId(categoryId);
     setMatchHome(match.home);
     setMatchAway(match.away);
     setMatchScore(match.score);
@@ -804,15 +810,22 @@ export default function App() {
 
   const saveEditMatch = async () => {
     if (!editingMatch) return;
-    const { categoryId, ticketIndex, matchIndex } = editingMatch;
+    const { categoryId: originalCategoryId, ticketIndex, matchIndex } = editingMatch;
     
-    const category = [...freeCategories, ...vipCategories].find(c => c.id === categoryId);
-    if (!category) return;
+    // Determine target category based on user selection or original
+    let finalCategoryId = editMatchCategoryId || originalCategoryId;
+    
+    // Automatically redirect category if status changes between today & results
+    if (finalCategoryId.endsWith("_today") && (matchStatus === "win" || matchStatus === "lose")) {
+      finalCategoryId = finalCategoryId.replace("_today", "_results");
+    } else if (finalCategoryId.endsWith("_results") && matchStatus === "pending") {
+      finalCategoryId = finalCategoryId.replace("_results", "_today");
+    }
 
-    const oldDateGroup = category.tickets[ticketIndex].date;
+    const originalCategory = [...freeCategories, ...vipCategories].find(c => c.id === originalCategoryId);
+    if (!originalCategory) return;
+
     const newDateGroup = formatDateToGroup(matchDate);
-
-    const updatedTickets = JSON.parse(JSON.stringify(category.tickets));
 
     const updatedMatch: Match = {
       num: editingMatch.match.num,
@@ -824,43 +837,99 @@ export default function App() {
       time: matchTime
     };
 
-    if (oldDateGroup === newDateGroup) {
-      // Inline update
-      updatedTickets[ticketIndex].matches[matchIndex] = updatedMatch;
-    } else {
-      // Date has changed! Reschedule match to correct group
-      // 1. Remove from old group
-      updatedTickets[ticketIndex].matches.splice(matchIndex, 1);
-      
-      // Clean up old group if empty
-      if (updatedTickets[ticketIndex].matches.length === 0) {
-        updatedTickets.splice(ticketIndex, 1);
-      } else {
-        // Re-index matches in old group
-        updatedTickets[ticketIndex].matches.forEach((m: any, idx: number) => {
-          m.num = idx + 1;
-        });
-      }
-
-      // 2. Add to new group
-      let newTicket = updatedTickets.find((t: any) => t.date === newDateGroup);
-      if (!newTicket) {
-        newTicket = {
-          date: newDateGroup,
-          matches: []
-        };
-        updatedTickets.unshift(newTicket);
-      }
-      
-      updatedMatch.num = newTicket.matches.length + 1;
-      newTicket.matches.push(updatedMatch);
-    }
-
     try {
-      await setDoc(doc(db, "categories", categoryId), {
-        ...category,
-        tickets: updatedTickets
-      }, { merge: true });
+      if (finalCategoryId === originalCategoryId) {
+        // SCENARIO 1: Category hasn't changed
+        const oldDateGroup = originalCategory.tickets[ticketIndex].date;
+        const updatedTickets = JSON.parse(JSON.stringify(originalCategory.tickets));
+
+        if (oldDateGroup === newDateGroup) {
+          // Inline update
+          updatedTickets[ticketIndex].matches[matchIndex] = updatedMatch;
+        } else {
+          // Date has changed! Reschedule match to correct group
+          // 1. Remove from old group
+          updatedTickets[ticketIndex].matches.splice(matchIndex, 1);
+          
+          // Clean up old group if empty
+          if (updatedTickets[ticketIndex].matches.length === 0) {
+            updatedTickets.splice(ticketIndex, 1);
+          } else {
+            // Re-index matches in old group
+            updatedTickets[ticketIndex].matches.forEach((m: any, idx: number) => {
+              m.num = idx + 1;
+            });
+          }
+
+          // 2. Add to new group
+          let newTicket = updatedTickets.find((t: any) => t.date === newDateGroup);
+          if (!newTicket) {
+            newTicket = {
+              date: newDateGroup,
+              matches: []
+            };
+            updatedTickets.unshift(newTicket);
+          }
+          
+          updatedMatch.num = newTicket.matches.length + 1;
+          newTicket.matches.push(updatedMatch);
+        }
+
+        await setDoc(doc(db, "categories", originalCategoryId), {
+          ...originalCategory,
+          tickets: updatedTickets
+        }, { merge: true });
+
+      } else {
+        // SCENARIO 2: Category has changed (manually or automatically via status check!)
+        // 1. Remove match from original category
+        const originalTickets = JSON.parse(JSON.stringify(originalCategory.tickets));
+        originalTickets[ticketIndex].matches.splice(matchIndex, 1);
+        
+        // Clean up old group if empty
+        if (originalTickets[ticketIndex].matches.length === 0) {
+          originalTickets.splice(ticketIndex, 1);
+        } else {
+          // Re-index matches in old group
+          originalTickets[ticketIndex].matches.forEach((m: any, idx: number) => {
+            m.num = idx + 1;
+          });
+        }
+
+        // 2. Load the target category (final category)
+        const finalCategory = [...freeCategories, ...vipCategories].find(c => c.id === finalCategoryId);
+        if (!finalCategory) {
+          alert("Target category not found!");
+          return;
+        }
+
+        const finalTickets = JSON.parse(JSON.stringify(finalCategory.tickets || []));
+        
+        // 3. Add to new group in final category
+        let newTicket = finalTickets.find((t: any) => t.date === newDateGroup);
+        if (!newTicket) {
+          newTicket = {
+            date: newDateGroup,
+            matches: []
+          };
+          finalTickets.unshift(newTicket);
+        }
+        
+        updatedMatch.num = newTicket.matches.length + 1;
+        newTicket.matches.push(updatedMatch);
+
+        // 4. Update both documents in Firestore
+        await setDoc(doc(db, "categories", originalCategoryId), {
+          ...originalCategory,
+          tickets: originalTickets
+        }, { merge: true });
+
+        await setDoc(doc(db, "categories", finalCategoryId), {
+          ...finalCategory,
+          tickets: finalTickets
+        }, { merge: true });
+      }
+
       setEditingMatch(null);
     } catch (err: any) {
       alert("Failed to save match: " + err.message);
@@ -901,7 +970,15 @@ export default function App() {
       return;
     }
 
-    const category = [...freeCategories, ...vipCategories].find(c => c.id === catId);
+    // Determine target category based on selection and automatic routing rules
+    let finalCatId = catId;
+    if (finalCatId.endsWith("_today") && (status === "win" || status === "lose")) {
+      finalCatId = finalCatId.replace("_today", "_results");
+    } else if (finalCatId.endsWith("_results") && status === "pending") {
+      finalCatId = finalCatId.replace("_results", "_today");
+    }
+
+    const category = [...freeCategories, ...vipCategories].find(c => c.id === finalCatId);
     if (!category) {
       alert("Selected category not found!");
       return;
@@ -932,7 +1009,7 @@ export default function App() {
     });
 
     try {
-      await setDoc(doc(db, "categories", catId), {
+      await setDoc(doc(db, "categories", finalCatId), {
         ...category,
         tickets: updatedTickets
       }, { merge: true });
@@ -2284,7 +2361,7 @@ export default function App() {
               </div>
             ) : (
               <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
-                Client Chats <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
+                {isMainAdmin ? "Client Chats" : "Chat Support"} <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] inline-block shadow-[0_0_8px_#E2FF00] animate-pulse" />
               </span>
             )
           ) : (
@@ -3573,335 +3650,234 @@ export default function App() {
                   }).format(convertedPrice);
 
                   return (
-                    <div className="w-full flex flex-col items-center gap-0">
-                      {/* PLAN DETAILS CARD */}
-                      <div className="w-full max-w-[360px] bg-gradient-to-br from-slate-900 via-slate-950 to-black border border-white/5 rounded-2xl p-5 mb-5 shadow-2xl flex flex-col select-none relative overflow-hidden">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-[#E2FF00]/5 to-transparent pointer-events-none" />
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-black uppercase tracking-wider text-[#E2FF00] bg-[#E2FF00]/10 px-2.5 py-1 rounded-md border border-[#E2FF00]/20">
-                            {planName}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <Crown className="w-4 h-4 text-[#E2FF00] animate-pulse" />
-                            <span className="text-[10px] font-mono font-bold text-slate-400 font-sans">VIP ACCESS</span>
-                          </div>
-                        </div>
-                        <div className="mt-4 flex items-baseline gap-1.5">
-                          <span className="text-3xl font-black tracking-tight text-white">{currentCountry.symbol} {formattedPrice}</span>
-                          <span className="text-xs text-slate-400 font-medium">/ weekly</span>
-                        </div>
-                        <div className="mt-1.5 flex items-center gap-1">
-                          <span className="text-[10px] font-mono text-slate-500">
-                            Base Rate: ${planUsdPrice} USD (1 USD ≈ {rate.toFixed(1)} {currentCountry.rateKey})
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* COUNTRY SELECTOR GRID */}
-                      <div className="w-full max-w-[360px] flex flex-col gap-2.5 mb-6 select-none">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5 font-sans">
-                          <Globe className="w-3.5 h-3.5 text-[#E2FF00]" />
-                          Select Your Payment Country
-                        </label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {paymentCountries.map((c) => {
-                            const isSelected = selectedCountryCode === c.code;
-                            return (
-                              <button
-                                key={c.code}
-                                onClick={() => setSelectedCountryCode(c.code)}
-                                className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-all duration-300 cursor-pointer ${
-                                  isSelected
-                                    ? "border-[#E2FF00] bg-[#111921] shadow-[0_0_12px_rgba(226,255,0,0.15)] text-white font-extrabold"
-                                    : "border-white/5 bg-slate-900/60 hover:border-white/10 hover:bg-slate-800/40 text-slate-300 font-medium"
-                                }`}
-                              >
-                                <span className="text-lg">{c.flag}</span>
-                                <div className="flex flex-col min-w-0">
-                                  <span className="text-xs truncate">{c.name}</span>
-                                  <span className="text-[9px] text-slate-500 font-mono font-bold">{c.currency}</span>
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* METHOD SPECIFIC BILLING CARD */}
-                      {currentCountry.code === "TZ" ? (
-                        <div className="w-full max-w-[360px] bg-slate-950/80 border border-white/5 rounded-2xl p-5 flex flex-col gap-4 select-none mb-6">
-                          <div className="flex items-center gap-2 border-b border-white/5 pb-3">
-                            <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00]">Halopesa Transfer Instruction</span>
-                          </div>
-
-                          <div className="flex flex-col gap-3">
-                            <div className="flex flex-col gap-1 bg-black/40 border border-white/5 p-3 rounded-xl">
-                              <span className="text-[9px] font-mono font-black uppercase tracking-wider text-slate-500">Halopesa Number</span>
-                              <div className="flex items-center justify-between">
-                                <span className="text-base font-black text-white font-mono">0620370435</span>
-                                <button
-                                  onClick={() => triggerCopy("0620370435", "number")}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 active:scale-95 transition text-[10px] cursor-pointer"
-                                >
-                                  {copiedText === "number" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                                  {copiedText === "number" ? "Copied" : "Copy"}
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-col gap-1 bg-black/40 border border-white/5 p-3 rounded-xl">
-                              <span className="text-[9px] font-mono font-black uppercase tracking-wider text-slate-500">Recipient Registered Name</span>
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-bold text-slate-200">Nyanga Shinhu</span>
-                                <button
-                                  onClick={() => triggerCopy("Nyanga Shinhu", "name")}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 active:scale-95 transition text-[10px] cursor-pointer"
-                                >
-                                  {copiedText === "name" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                                  {copiedText === "name" ? "Copied" : "Copy"}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="text-[11px] text-slate-400 leading-relaxed bg-amber-500/5 border border-amber-500/10 p-3.5 rounded-xl flex items-start gap-2.5">
-                            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                            <div className="flex flex-col gap-1">
-                              <strong className="text-slate-200">Instructions:</strong>
-                              <span>1. Open your Mobile Money wallet.</span>
-                              <span>2. Send exactly <strong className="text-white">{currentCountry.symbol} {formattedPrice}</strong> to the Halopesa number above.</span>
-                              <span>3. Confirm the name is <strong className="text-white">Nyanga Shinhu</strong>.</span>
-                              <span>4. Once sent, screenshot your proof and tap below to contact support for instant activation!</span>
-                            </div>
-                          </div>
-
-                          <a
-                            href={`https://wa.me/256782200000?text=I%20have%20paid%20${formattedPrice}%20TZS%20on%20Halopesa%20for%20${planName}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="w-full bg-[#E2FF00] hover:bg-[#c2db00] text-black font-extrabold text-xs py-3.5 rounded-xl shadow-lg transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+                    <div className="w-full flex flex-col items-center gap-4">
+                      <AnimatePresence mode="wait">
+                        {!pendingOrderConfirmation ? (
+                          /* STEP 1: SELECT COUNTRY & ORDER SUBSCRIPTION */
+                          <motion.div
+                            key="select-plan"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="w-full max-w-[380px] bg-gradient-to-br from-slate-900 via-slate-950 to-black border border-white/5 rounded-2xl p-5 shadow-2xl flex flex-col select-none relative overflow-hidden"
                           >
-                            <span>💬 Contact Support to Activate</span>
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                        </div>
-                      ) : currentCountry.code === "OTHER" ? (
-                        <div className="w-full max-w-[360px] bg-slate-950/80 border border-white/5 rounded-2xl p-5 flex flex-col gap-4 select-none mb-6">
-                          <div className="flex items-center gap-2 border-b border-white/5 pb-3">
-                            <Coins className="w-5 h-5 text-[#E2FF00]" />
-                            <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00]">BEP-20 Cryptocurrency Payment</span>
-                          </div>
-
-                          <div className="flex flex-col gap-3">
-                            <div className="flex flex-col gap-1 bg-black/40 border border-white/5 p-3 rounded-xl">
-                              <span className="text-[9px] font-mono font-black uppercase tracking-wider text-slate-500">BEP-20 (USDT / USDC) Deposit Address</span>
-                              <div className="flex items-center gap-2 justify-between mt-1">
-                                <span className="text-[10px] font-mono text-slate-300 break-all select-all flex-1 font-sans">0xE6a19d217652577807feC3B9135A260179d41D16</span>
-                                <button
-                                  onClick={() => triggerCopy("0xE6a19d217652577807feC3B9135A260179d41D16", "crypto")}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-white/5 text-slate-300 hover:text-white hover:bg-white/10 active:scale-95 transition text-[10px] shrink-0 cursor-pointer"
-                                >
-                                  {copiedText === "crypto" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                                  {copiedText === "crypto" ? "Copied" : "Copy"}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="text-[11px] text-slate-400 leading-relaxed bg-amber-500/5 border border-amber-500/10 p-3.5 rounded-xl flex items-start gap-2.5 font-sans">
-                            <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                            <div className="flex flex-col gap-1">
-                              <strong className="text-slate-200">Instructions:</strong>
-                              <span>1. Copy the BEP-20 address above.</span>
-                              <span>2. Send exactly <strong className="text-white">${planUsdPrice} USDT or USDC</strong>.</span>
-                              <span>3. Verify the network is <strong className="text-white">BNB Smart Chain (BEP20)</strong> or your payment will be lost.</span>
-                              <span>4. Once sent, screenshot the transaction hash and tap below to activate.</span>
-                            </div>
-                          </div>
-
-                          <a
-                            href={`https://wa.me/256782200000?text=I%20have%20paid%20${planUsdPrice}%20USD%20on%20BEP20%20for%20${planName}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="w-full bg-[#E2FF00] hover:bg-[#c2db00] text-black font-extrabold text-xs py-3.5 rounded-xl shadow-lg transition-all active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
-                          >
-                            <span>💬 Contact Support to Verify</span>
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                        </div>
-                      ) : (
-                        <div className="w-full max-w-[360px] flex flex-col gap-4 mb-6">
-                          <div className="bg-red-950/30 border border-red-500/30 rounded-2xl p-5 flex flex-col gap-4 select-none shadow-xl relative overflow-hidden">
-                            <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500 animate-pulse" />
-                            <div className="flex items-center gap-2">
-                              <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
-                              <span className="text-xs font-black uppercase tracking-wider text-red-400">CRITICAL PAYMENT NOTICE</span>
-                            </div>
-                            <p className="text-[11px] font-medium text-slate-300 leading-relaxed font-sans">
-                              Do <strong className="text-red-300 underline font-extrabold">NOT</strong> change the email or name fields on the payment checkout page. If changed, your automatic account activation will fail, and you will lose your payment!
-                            </p>
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-[#E2FF00]/5 to-transparent pointer-events-none" />
                             
-                            {/* PRECISE CHECKOUT LINK IN NEW TAB */}
-                            {(() => {
-                              const countryObj = paymentCountries.find(c => c.code === selectedCountryCode);
-                              const checkoutUrl = countryObj ? (countryObj.code === "UG" ? "https://flutterwave.com/pay/ugxeversend?email=paymentgateway1998@gmail.com&firstname=Jilala&lastname=Masanja" : countryObj.code === "NG" ? "https://flutterwave.com/pay/ngneversend?email=paymentgateway198@gmail.com&firstname=JOEL%20EKPO&lastname=ABEL" : countryObj.code === "CM" ? "https://flutterwave.com/pay/xafeversend?email=paymentgateway198@gmail.com&firstname=JOEL%20EKPO&lastname=ABEL" : "https://flutterwave.com/pay/xofeversend?email=paymentgateway198@gmail.com&firstname=JOEL%20EKPO&lastname=ABEL") : "";
-
-                              return (
-                                <a
-                                  href={checkoutUrl}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="w-full bg-[#E2FF00] hover:bg-[#c2db00] text-black font-black text-xs py-4 rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2.5 cursor-pointer text-center font-sans uppercase tracking-widest mt-1"
-                                >
-                                  <span>🚀 Proceed to Payment ({currentCountry.symbol} {formattedPrice})</span>
-                                  <ExternalLink className="w-4.5 h-4.5" />
-                                </a>
-                              );
-                            })()}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* PROOF OF PAYMENT SCREENSHOT UPLOADER */}
-                      {(() => {
-                        const pendingProof = userProofs.find(p => p.categoryId === activeCategory.id && p.status === "pending");
-                        const rejectedProof = userProofs.find(p => p.categoryId === activeCategory.id && p.status === "rejected");
-
-                        if (pendingProof) {
-                          return (
-                            <div className="w-full max-w-[360px] bg-slate-950/80 border border-[#E2FF00]/30 rounded-2xl p-5 flex flex-col items-center text-center gap-3 select-none mb-6">
-                              <div className="w-12 h-12 rounded-full bg-[#E2FF00]/10 flex items-center justify-center border border-[#E2FF00]/20">
-                                <Clock className="w-6 h-6 text-[#E2FF00] animate-pulse" />
+                            <div className="flex items-center justify-between border-b border-white/5 pb-3.5 mb-4">
+                              <span className="text-[10px] font-mono font-black uppercase tracking-wider text-[#E2FF00] bg-[#E2FF00]/10 px-2.5 py-1 rounded-md border border-[#E2FF00]/20">
+                                Premium VIP Access
+                              </span>
+                              <div className="flex items-center gap-1 text-slate-400">
+                                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                <span className="text-[9px] font-bold uppercase tracking-wider font-mono">Secure Order</span>
                               </div>
-                              <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00]">Proof Under Review</span>
-                              <p className="text-[11px] text-slate-300 font-medium leading-relaxed font-sans">
-                                Your screenshot has been submitted and is currently pending verification by our administrators. This process typically takes under 15 minutes.
+                            </div>
+
+                            <div className="mb-4">
+                              <h3 className="text-base font-black text-white font-sans uppercase tracking-wide">
+                                {planName}
+                              </h3>
+                              <p className="text-[10px] text-slate-400 leading-normal mt-1">
+                                Complete your subscription order to connect with an active support agent and unlock your high-accuracy predictions instantly.
                               </p>
-                              <div className="w-full bg-black/40 border border-white/5 p-3 rounded-xl flex items-center justify-between text-xs mt-2">
-                                <span className="text-slate-500 font-mono">Submitted:</span>
-                                <span className="text-slate-300 font-mono font-bold">
-                                  {pendingProof.createdAt ? new Date(pendingProof.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Recently"}
+                            </div>
+
+                            {/* COUNTRY SELECTOR GRID */}
+                            <div className="mb-5 space-y-2">
+                              <label className="text-[9px] font-black uppercase tracking-widest text-slate-400 font-sans">
+                                Choose Your Location
+                              </label>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {paymentCountries.map((c) => {
+                                  const isSelected = selectedCountryCode === c.code;
+                                  return (
+                                    <button
+                                      key={c.code}
+                                      onClick={() => setSelectedCountryCode(c.code)}
+                                      className={`p-2.5 rounded-xl flex flex-col items-center text-center border transition-all duration-300 active:scale-95 cursor-pointer ${
+                                        isSelected
+                                          ? "bg-[#E2FF00]/10 border-[#E2FF00] shadow-[0_0_10px_rgba(226,255,0,0.1)]"
+                                          : "bg-white/5 border-white/5 hover:border-white/10"
+                                      }`}
+                                    >
+                                      <span className="text-sm select-none mb-1">{c.flag}</span>
+                                      <span className={`text-[9px] font-bold truncate max-w-full ${isSelected ? "text-white" : "text-slate-400"}`}>
+                                        {c.name}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* PRICE SUMMARY ROW */}
+                            <div className="bg-black/40 border border-white/5 p-4 rounded-xl mb-5 flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="text-[8px] font-mono font-bold uppercase tracking-widest text-slate-500">Converted Cost</span>
+                                <span className="text-xs font-bold text-slate-300 font-sans mt-0.5">
+                                  {currentCountry.currency}
+                                </span>
+                              </div>
+                              <div className="text-right flex flex-col items-end">
+                                <span className="text-[9px] font-mono text-slate-400 line-through">
+                                  ${planUsdPrice} USD
+                                </span>
+                                <span className="text-lg font-black text-[#E2FF00] tracking-tight leading-none mt-1 font-sans">
+                                  {currentCountry.symbol} {formattedPrice}
                                 </span>
                               </div>
                             </div>
-                          );
-                        }
 
-                        return (
-                          <div className="w-full max-w-[360px] bg-slate-950/80 border border-white/5 rounded-2xl p-5 flex flex-col gap-4 select-none mb-6">
-                            <div className="flex items-center gap-2 border-b border-white/5 pb-3">
-                              <Camera className="w-4.5 h-4.5 text-[#E2FF00]" />
-                              <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00]">Submit Payment Screenshot</span>
+                            <button
+                              onClick={() => {
+                                setPendingOrderConfirmation({
+                                  planName,
+                                  usdPrice: planUsdPrice,
+                                  price: `${currentCountry.symbol} ${formattedPrice}`,
+                                  currency: currentCountry.currency,
+                                  countryName: currentCountry.name,
+                                  categoryId: activeCategory.id
+                                });
+                              }}
+                              className="w-full bg-[#E2FF00] hover:bg-[#cbfa00] text-black font-extrabold text-xs py-4 rounded-xl shadow-xl hover:shadow-[#E2FF00]/15 active:scale-98 transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider"
+                            >
+                              <Zap className="w-4 h-4 fill-current shrink-0 animate-pulse" />
+                              Order VIP Subscription
+                            </button>
+                          </motion.div>
+
+                        ) : (
+                          /* STEP 2: CONFIRM ORDER & FORWARD TO CHAT */
+                          <motion.div
+                            key="confirm-plan"
+                            initial={{ opacity: 0, scale: 0.98 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.98 }}
+                            className="w-full max-w-[380px] bg-gradient-to-br from-slate-900 via-slate-950 to-black border-2 border-[#E2FF00]/30 rounded-2xl p-5 shadow-2xl flex flex-col select-none relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-[#E2FF00]/10 to-transparent pointer-events-none" />
+                            
+                            <div className="flex items-center gap-2 mb-4 border-b border-white/5 pb-3">
+                              <Sparkles className="w-5 h-5 text-[#E2FF00] animate-pulse shrink-0" />
+                              <h3 className="text-sm font-black uppercase tracking-wider text-[#E2FF00] font-sans">
+                                Confirm Your VIP Order
+                              </h3>
                             </div>
 
-                            {rejectedProof && (
-                              <div className="text-[10px] text-rose-400 bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-xl font-medium text-center">
-                                <span className="font-bold block uppercase tracking-wider text-xs mb-1">❌ Previous Submission Rejected</span>
-                                The administrator rejected your payment proof. Please make sure the screenshot clearly displays the successful transaction confirmation.
-                              </div>
-                            )}
+                            <p className="text-[10.5px] text-slate-300 leading-relaxed mb-4">
+                              You are ordering premium weekly subscription access to <span className="font-extrabold text-white">"{pendingOrderConfirmation.planName}"</span>. Please review your order below:
+                            </p>
 
-                            {proofSubmitError && (
-                              <div className="text-[10px] text-rose-400 bg-rose-950/20 border border-rose-900/30 p-2.5 rounded-xl font-medium text-center">
-                                {proofSubmitError}
+                            <div className="bg-black/50 border border-white/5 rounded-xl p-3.5 space-y-2 mb-5 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Subscription:</span>
+                                <span className="font-bold text-slate-200 uppercase">{pendingOrderConfirmation.planName.replace(" Weekly Access", "")}</span>
                               </div>
-                            )}
-
-                            {proofSubmitSuccess && (
-                              <div className="text-[10px] text-emerald-400 bg-emerald-950/20 border border-emerald-900/30 p-2.5 rounded-xl font-medium text-center">
-                                {proofSubmitSuccess}
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Duration:</span>
+                                <span className="font-bold text-emerald-400 font-mono">7 Days Access</span>
                               </div>
-                            )}
-
-                            {/* Drag-and-drop or select file box */}
-                            {!proofImage ? (
-                              <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/10 hover:border-[#E2FF00]/40 rounded-xl p-6 bg-black/40 cursor-pointer transition-all duration-300">
-                                <div className="p-3 bg-white/5 rounded-full mb-2.5 text-slate-400">
-                                  <Image className="w-5 h-5" />
-                                </div>
-                                <span className="text-[11px] font-bold text-slate-200">Tap to select or drop screenshot</span>
-                                <span className="text-[9px] text-slate-500 font-mono mt-1">Supports PNG, JPG, JPEG</span>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                      if (file.size > 2 * 1024 * 1024) {
-                                        setProofSubmitError("Image size must be smaller than 2MB.");
-                                        return;
-                                      }
-                                      setProofSubmitError(null);
-                                      const reader = new FileReader();
-                                      reader.onload = () => {
-                                        setProofImage(reader.result as string);
-                                      };
-                                      reader.onerror = () => {
-                                        setProofSubmitError("Failed to read image file.");
-                                      };
-                                      reader.readAsDataURL(file);
-                                    }
-                                  }}
-                                />
-                              </label>
-                            ) : (
-                              <div className="relative border border-white/10 rounded-xl overflow-hidden bg-black/40 p-2 flex flex-col gap-2">
-                                <img
-                                  src={proofImage}
-                                  alt="Payment Proof Preview"
-                                  className="w-full max-h-[160px] object-contain rounded-lg"
-                                  referrerPolicy="no-referrer"
-                                />
-                                <button
-                                  onClick={() => setProofImage(null)}
-                                  className="absolute top-2 right-2 p-1.5 bg-black/80 rounded-full text-slate-300 hover:text-white hover:bg-black border border-white/10 transition-all cursor-pointer"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                                <span className="text-[9px] text-slate-500 text-center font-mono font-bold">Preview Selected Screenshot</span>
+                              <div className="flex justify-between">
+                                <span className="text-slate-500">Target Region:</span>
+                                <span className="font-bold text-slate-200">{pendingOrderConfirmation.countryName}</span>
                               </div>
-                            )}
+                              <div className="flex justify-between border-t border-white/5 pt-2 mt-1 font-sans">
+                                <span className="text-slate-400 font-semibold">Total Price:</span>
+                                <span className="font-black text-base text-[#E2FF00]">{pendingOrderConfirmation.price}</span>
+                              </div>
+                            </div>
 
-                            {proofImage && (
+                            <div className="bg-emerald-950/15 border border-emerald-500/15 p-3 rounded-xl mb-5 text-[9.5px] text-emerald-300 leading-normal flex items-start gap-2 font-medium">
+                              <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                              <p>
+                                <span className="font-bold text-emerald-200 block mb-0.5 uppercase tracking-wide">Live Agent Routing</span>
+                                Once you click below, your order will be initialized, and you will be forwarded to our secure support chat. A support agent will instantly connect to provide your payment instructions and activate your access!
+                              </p>
+                            </div>
+
+                            <div className="flex flex-col gap-2">
                               <button
                                 onClick={async () => {
                                   if (!currentUser) return;
-                                  setUploadingProof(true);
-                                  setProofSubmitError(null);
-                                  setProofSubmitSuccess(null);
+                                  setCreatingOrder(true);
                                   try {
-                                    const proofId = "proof_" + Math.random().toString(36).substring(2, 15);
-                                    await setDoc(doc(db, "proofs", proofId), {
-                                      id: proofId,
+                                    const orderId = "order_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+                                    
+                                    // 1. Create order document in Firestore
+                                    await setDoc(doc(db, "orders", orderId), {
+                                      id: orderId,
                                       userId: currentUser.uid,
-                                      username: userProfile?.username || currentUser.displayName || currentUser.email?.split("@")[0] || "User",
+                                      username: userProfile?.username || currentUser.displayName || currentUser.email?.split("@")[0] || "Client",
                                       email: currentUser.email || "",
-                                      categoryId: activeCategory.id,
-                                      screenshot: proofImage,
-                                      status: "pending",
-                                      createdAt: new Date().toISOString(),
-                                      amount: `${currentCountry.symbol} ${formattedPrice}`
+                                      planName: pendingOrderConfirmation.planName,
+                                      categoryId: pendingOrderConfirmation.categoryId,
+                                      price: pendingOrderConfirmation.price,
+                                      currency: pendingOrderConfirmation.currency,
+                                      status: "pending_agent",
+                                      assignedAgentId: null,
+                                      createdAt: new Date().toISOString()
                                     });
-                                    setProofSubmitSuccess("Payment proof uploaded successfully!");
-                                    setProofImage(null);
+
+                                    // 2. Automatically post System Notification message into chats
+                                    const messageId = "msg_order_" + Date.now() + "_" + Math.random().toString(36).substring(2, 5);
+                                    await setDoc(doc(db, "chats", messageId), {
+                                      id: messageId,
+                                      userId: currentUser.uid,
+                                      senderId: currentUser.uid,
+                                      senderName: userProfile?.username || currentUser.displayName || currentUser.email?.split("@")[0] || "Client",
+                                      text: `👋 System Notification: Created subscription order ${orderId} for "${pendingOrderConfirmation.planName}" (${pendingOrderConfirmation.price}). I am waiting for an agent to connect to complete my payment.`,
+                                      message: `👋 System Notification: Created subscription order ${orderId} for "${pendingOrderConfirmation.planName}" (${pendingOrderConfirmation.price}). I am waiting for an agent to connect to complete my payment.`,
+                                      timestamp: new Date().toISOString(),
+                                      readByAdmin: false,
+                                      readByUser: true,
+                                      senderType: "user"
+                                    });
+
+                                    // 3. Dispatch Programmatic FCM Notice to notify admin
+                                    await sendFCMNotificationProgrammatic(
+                                      "New Subscription Order Pending",
+                                      `User ${currentUser.email} has placed an order for ${pendingOrderConfirmation.planName}.`
+                                    );
+
+                                    // 4. Reset checkout preview state and redirect user to Chat Support
+                                    setPendingOrderConfirmation(null);
+                                    setOpenedCategoryId(null); // Close active ticket overlay
+                                    setActiveTab("chats"); // Redirect to chat tab
                                   } catch (err: any) {
-                                    console.error("Error saving proof:", err);
-                                    setProofSubmitError("Failed to submit: " + err.message);
+                                    console.error("Error creating subscription order: ", err);
+                                    alert("Could not complete order setup. Please contact support. Error: " + err.message);
                                   } finally {
-                                    setUploadingProof(false);
+                                    setCreatingOrder(false);
                                   }
                                 }}
-                                disabled={uploadingProof}
-                                className="w-full bg-[#E2FF00] hover:bg-[#c2db00] disabled:bg-slate-800 disabled:text-slate-500 text-black font-extrabold text-xs py-3.5 rounded-xl shadow-lg transition-all active:scale-98 flex items-center justify-center gap-1.5 cursor-pointer"
+                                disabled={creatingOrder}
+                                className="w-full bg-[#E2FF00] hover:bg-[#cbfa00] disabled:bg-slate-800 disabled:text-slate-500 text-black font-extrabold text-xs py-4 rounded-xl shadow-xl transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer uppercase tracking-wider"
                               >
-                                {uploadingProof ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                {uploadingProof ? "Submitting Proof..." : "Submit Proof as Payment Receipt"}
+                                {creatingOrder ? (
+                                  <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    Creating VIP Order...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Send className="w-4 h-4" />
+                                    Continue to Pay & Open Chat
+                                  </>
+                                )}
                               </button>
-                            )}
-                          </div>
-                        );
-                      })()}
+
+                              <button
+                                type="button"
+                                onClick={() => setPendingOrderConfirmation(null)}
+                                disabled={creatingOrder}
+                                className="w-full bg-white/5 hover:bg-white/10 text-slate-300 font-bold text-xs py-3 rounded-xl transition-all border border-white/5 cursor-pointer"
+                              >
+                                Back to Selection
+                              </button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   );
                 })()
@@ -4069,6 +4045,22 @@ export default function App() {
               </div>
 
               <div className="space-y-3">
+                {/* Category Picker */}
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Target Category</label>
+                  <select
+                    value={editMatchCategoryId}
+                    onChange={(e) => setEditMatchCategoryId(e.target.value)}
+                    className="w-full bg-[#121921] border border-white/10 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-[#E2FF00]/50 font-sans"
+                  >
+                    {[...freeCategories, ...vipCategories].map(cat => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.title} ({cat.id.startsWith("free") ? "FREE" : "VIP"})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Date & Time Picker */}
                 <div className="grid grid-cols-2 gap-2">
                   <div>
