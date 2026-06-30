@@ -21,6 +21,37 @@ import {
 } from "lucide-react";
 import { doc, setDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
+import { auth } from "../firebase";
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+function handleFirestoreError(error: any, operationType: string, path: string | null) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
 
 export interface Agent {
   id: string;
@@ -95,6 +126,8 @@ export default function WhatsAppChat({
   const [inputText, setInputText] = useState("");
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [partnerTyping, setPartnerTyping] = useState(false);
+  const typingTimeoutRef = useRef<any>(null);
 
   // Multi-agent support states
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -290,6 +323,50 @@ export default function WhatsAppChat({
       }
     }
   }, [selectedUserId, allOrders, isMainAdmin]);
+
+  // Real-time partner typing state listener
+  useEffect(() => {
+    const activeUserId = isMainAdmin ? selectedUserId : currentUser?.uid;
+    if (!activeUserId || !db) {
+      setPartnerTyping(false);
+      return;
+    }
+
+    const docRef = doc(db, "typing_states", activeUserId);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const isTypingField = isMainAdmin ? "userTyping" : "adminTyping";
+        const lastTypedField = isMainAdmin ? "userLastTyped" : "adminLastTyped";
+        
+        const isTyping = !!data[isTypingField];
+        const lastTyped = data[lastTypedField] || 0;
+        const now = Date.now();
+        
+        // Show typing if marked true and within 6 seconds (failsafe for stale window close/network issues)
+        if (isTyping && (now - lastTyped < 6000)) {
+          setPartnerTyping(true);
+        } else {
+          setPartnerTyping(false);
+        }
+      } else {
+        setPartnerTyping(false);
+      }
+    }, (err) => {
+      handleFirestoreError(err, "get", `typing_states/${activeUserId}`);
+    });
+
+    return () => unsubscribe();
+  }, [db, isMainAdmin, selectedUserId, currentUser]);
+
+  // Scroll to bottom when partner is typing
+  useEffect(() => {
+    if (partnerTyping) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 50);
+    }
+  }, [partnerTyping]);
   
   // Search state for Admin users list
   const [searchQuery, setSearchQuery] = useState("");
@@ -409,11 +486,48 @@ export default function WhatsAppChat({
     }
   }, [activeMessages.length]);
 
+  const handleMessageInputChange = (val: string) => {
+    setInputText(val);
+
+    const activeUserId = isMainAdmin ? selectedUserId : currentUser?.uid;
+    if (!activeUserId || !db) return;
+
+    const docRef = doc(db, "typing_states", activeUserId);
+    setDoc(docRef, {
+      [isMainAdmin ? "adminTyping" : "userTyping"]: val.trim().length > 0,
+      [isMainAdmin ? "adminLastTyped" : "userLastTyped"]: Date.now()
+    }, { merge: true }).catch(err => console.error("Error setting typing status:", err));
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      setDoc(docRef, {
+        [isMainAdmin ? "adminTyping" : "userTyping"]: false,
+        [isMainAdmin ? "adminLastTyped" : "userLastTyped"]: Date.now()
+      }, { merge: true }).catch(err => console.error("Error clearing typing status:", err));
+    }, 2500);
+  };
+
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const hasText = !!inputText.trim();
     const hasImages = attachedImages.length > 0;
     if ((!hasText && !hasImages) || !currentUser) return;
+
+    // Clear typing state immediately on send
+    const activeUserId = isMainAdmin ? selectedUserId : currentUser?.uid;
+    if (activeUserId && db) {
+      const docRef = doc(db, "typing_states", activeUserId);
+      setDoc(docRef, {
+        [isMainAdmin ? "adminTyping" : "userTyping"]: false,
+        [isMainAdmin ? "adminLastTyped" : "userLastTyped"]: Date.now()
+      }, { merge: true }).catch(err => console.error("Error clearing typing status:", err));
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
 
     try {
       const messageId = "msg_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
@@ -574,40 +688,7 @@ export default function WhatsAppChat({
       {/* CHAT MAIN CONVERSATION WINDOW */}
       <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden">
         
-        {/* CONVERSATION TOP BAR */}
-        {(!isMainAdmin || selectedUserId) && (
-          <div className="bg-[#f0f2f5] border-b border-[#e9edef] px-4 py-3 flex items-center justify-between shrink-0 z-30 shadow-sm select-none">
-            <div className="flex items-center gap-3">
-              {isMainAdmin && (
-                <button
-                  onClick={() => setSelectedUserId(null)}
-                  className="md:hidden p-1.5 rounded-full hover:bg-black/5 text-slate-700 cursor-pointer mr-1"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-              )}
-              <div className={`w-9 h-9 rounded-full ${isMainAdmin && activePartner?.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-[#00a884]"} flex items-center justify-center text-white font-extrabold text-xs uppercase shadow-sm shrink-0`}>
-                {isMainAdmin ? (activePartner?.username?.[0] || "C") : "N"}
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-xs font-black text-[#111b21] uppercase tracking-wide flex items-center gap-1.5 leading-tight truncate">
-                  {isMainAdmin ? activePartner?.username : "Negro Tips Support"}
-                  {!isMainAdmin && <ShieldCheck className="w-3.5 h-3.5 text-[#00a884] fill-white shrink-0" />}
-                </h3>
-                <p className="text-[9px] text-[#667781] leading-none mt-0.5 truncate">
-                  {isMainAdmin ? activePartner?.email : "Official Support Agent Team"}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 bg-[#00a884]/10 border border-[#00a884]/20 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-pulse" />
-                <span className="text-[8px] font-mono font-bold uppercase tracking-wider text-[#00a884]">Secure SSL Chat</span>
-              </div>
-            </div>
-          </div>
-        )}
+
 
         {/* USER BANNER FOR ORDER STATUS */}
         {!isMainAdmin && (() => {
@@ -879,6 +960,23 @@ export default function WhatsAppChat({
               );
             })
           )}
+
+          {/* Real-time typing animation bubble */}
+          {partnerTyping && (
+            <div className="flex justify-start relative z-10 animate-fade-in mb-4 max-w-[250px]">
+              <div className="rounded-2xl p-3 shadow-sm bg-white border border-slate-100 rounded-tl-none flex items-center gap-2">
+                <span className="text-[10px] font-black text-[#667781] font-sans">
+                  {isMainAdmin ? "Client typing" : "Support typing"}
+                </span>
+                <div className="flex gap-1 items-center pt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-bounce [animation-delay:0ms] duration-1000" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-bounce [animation-delay:200ms] duration-1000" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00a884] animate-bounce [animation-delay:400ms] duration-1000" />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="h-28 md:h-36 shrink-0" />
           <div ref={messagesEndRef} />
         </div>
@@ -1009,7 +1107,7 @@ export default function WhatsAppChat({
                   ref={textareaRef}
                   id="message-input-field"
                   value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
+                  onChange={(e) => handleMessageInputChange(e.target.value)}
                   placeholder="Type your message..."
                   rows={1}
                   className="w-full pl-4 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#00a884] placeholder-slate-400 transition-all shadow-sm resize-none max-h-[144px] overflow-y-auto block leading-relaxed"

@@ -109,5 +109,11 @@ service cloud.firestore {
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
+
+    // 8. Typing states collection rules
+    match /typing_states/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if (isOwner(userId) || isAdmin()) && isValidId(userId);
+    }
   }
 }

@@ -218,6 +218,33 @@ export default function App() {
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
   const [chatInputText, setChatInputText] = useState("");
 
+  // Fix the body and HTML layout to prevent dynamic keyboard/scrolling push of the top header
+  useEffect(() => {
+    if (activeTab === "chats") {
+      document.body.style.overflow = "hidden";
+      document.body.style.position = "fixed";
+      document.body.style.width = "100%";
+      document.body.style.height = "100%";
+      document.body.style.top = "0";
+      document.body.style.left = "0";
+    } else {
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      document.body.style.height = "";
+      document.body.style.top = "";
+      document.body.style.left = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      document.body.style.height = "";
+      document.body.style.top = "";
+      document.body.style.left = "";
+    };
+  }, [activeTab]);
+
   // Parse standalone mode on startup
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

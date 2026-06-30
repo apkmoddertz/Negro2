@@ -61,6 +61,17 @@
         "status": { "type": "string", "enum": ["available", "busy", "offline"] }
       },
       "required": ["id", "name", "role", "imageUrl", "status"]
+    },
+    "TypingState": {
+      "title": "Typing State",
+      "description": "Real-time typing status between users and support agents",
+      "type": "object",
+      "properties": {
+        "userTyping": { "type": "boolean" },
+        "userLastTyped": { "type": "integer" },
+        "adminTyping": { "type": "boolean" },
+        "adminLastTyped": { "type": "integer" }
+      }
     }
   },
   "firestore": {
@@ -79,6 +90,10 @@
     "/agents/{agentId}": {
       "schema": "Agent",
       "description": "Support agent profiles"
+    },
+    "/typing_states/{userId}": {
+      "schema": "TypingState",
+      "description": "Real-time typing indicator states"
     }
   }
 }
