@@ -485,14 +485,14 @@ export default function WhatsAppChat({
         <div id="admin-chat-sidebar" className={`w-full md:w-[320px] border-r border-[#d1d7db] flex flex-col bg-[#ffffff] ${selectedUserId ? "hidden md:flex" : "flex"}`}>
           <div className="p-3.5 border-b border-[#e9edef] bg-[#f0f2f5] space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-wider text-[#111b21] flex items-center gap-1.5">
+              <span className="text-xs font-black uppercase tracking-wider text-[#111b21] flex items-center gap-1.5 font-sans">
                 <MessageSquare className="w-3.5 h-3.5 text-[#00a884]" />
                 Client Chats
               </span>
               <button
                 type="button"
                 onClick={() => setShowAgentsModal(true)}
-                className="text-[9px] bg-[#E2FF00]/15 text-yellow-600 hover:bg-[#E2FF00]/30 border border-yellow-600/20 px-2 py-0.5 rounded-md font-sans font-black uppercase cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+                className="text-[9px] bg-[#00a884]/15 text-[#00a884] hover:bg-[#00a884]/30 border border-[#00a884]/20 px-2 py-0.5 rounded-md font-sans font-black uppercase cursor-pointer transition-all active:scale-95 flex items-center gap-1"
                 title="Manage support agents and availability status"
               >
                 <Sparkles className="w-2.5 h-2.5 text-yellow-500 animate-pulse" />
@@ -508,17 +508,17 @@ export default function WhatsAppChat({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search clients..."
-                className="w-full pl-8 pr-3 py-1.5 bg-[#ffffff] border border-slate-200 rounded-lg text-xs font-bold text-[#111b21] placeholder-slate-400 focus:outline-none focus:border-[#00a884] transition-all"
+                className="w-full pl-8 pr-3 py-1.5 bg-[#ffffff] border border-[#e9edef] rounded-lg text-xs font-bold text-[#111b21] placeholder-slate-400 focus:outline-none focus:border-[#00a884] transition-all"
               />
               <Search className="absolute left-2.5 top-2.2 w-3.5 h-3.5 text-slate-400" />
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-slate-100 bg-white scrollbar-none">
+          <div className="flex-1 overflow-y-auto divide-y divide-[#e9edef] bg-[#ffffff] scrollbar-none">
             {filteredSessions.length === 0 ? (
               <div className="p-6 text-center space-y-1 text-slate-400 select-none h-full flex flex-col justify-center items-center">
                 <Search className="w-6 h-6 mx-auto text-slate-300 mb-1" />
-                <p className="text-xs font-bold text-slate-600">No active sessions</p>
+                <p className="text-xs font-bold text-slate-500">No active sessions</p>
                 <p className="text-[10px] text-slate-400">Waiting for clients to initiate chats</p>
               </div>
             ) : (
@@ -529,12 +529,12 @@ export default function WhatsAppChat({
                     id={`session-btn-${session.userId}`}
                     key={session.userId}
                     onClick={() => setSelectedUserId(session.userId)}
-                    className={`w-full p-3.5 flex items-start gap-3 transition-all cursor-pointer text-left border-b border-[#f5f6f6] ${
-                      isSelected ? "bg-[#eaebeb]" : "hover:bg-[#f5f6f6] bg-[#ffffff]"
+                    className={`w-full p-3.5 flex items-start gap-3 transition-all cursor-pointer text-left border-b border-[#f0f2f5] ${
+                      isSelected ? "bg-[#eae6df]" : "hover:bg-[#f5f6f6] bg-[#ffffff]"
                     }`}
                   >
                     <div className="relative shrink-0 mt-0.5">
-                      <div className={`w-9 h-9 rounded-full ${session.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-slate-300"} flex items-center justify-center text-slate-800 font-bold text-sm uppercase shadow-sm`}>
+                      <div className={`w-9 h-9 rounded-full ${session.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-slate-200"} flex items-center justify-center text-slate-800 font-bold text-sm uppercase shadow-sm`}>
                         {session.username[0]}
                       </div>
                       <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${session.isVip ? "bg-yellow-500" : "bg-emerald-500 animate-pulse"}`} />
@@ -546,14 +546,14 @@ export default function WhatsAppChat({
                           {session.username}
                           {session.isVip && <Zap className="w-2.5 h-2.5 text-yellow-500 fill-yellow-500 shrink-0" />}
                         </p>
-                        <span className="text-[9px] text-slate-400 font-mono">
+                        <span className="text-[9px] text-[#667781] font-mono">
                           {new Date(session.lastMessage.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
                       <p className="text-[10px] text-[#667781] truncate mt-0.5">
                         {session.lastMessage.senderId === "admin" ? "You: " : ""}{session.lastMessage.text}
                       </p>
-                      <p className="text-[8px] text-slate-400 truncate font-mono mt-0.5">
+                      <p className="text-[8px] text-[#667781]/80 truncate font-mono mt-0.5">
                         {session.email}
                       </p>
                     </div>
@@ -581,12 +581,12 @@ export default function WhatsAppChat({
               {isMainAdmin && (
                 <button
                   onClick={() => setSelectedUserId(null)}
-                  className="md:hidden p-1.5 rounded-full hover:bg-slate-200 text-slate-600 cursor-pointer mr-1"
+                  className="md:hidden p-1.5 rounded-full hover:bg-black/5 text-slate-700 cursor-pointer mr-1"
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </button>
               )}
-              <div className={`w-9 h-9 rounded-full ${isMainAdmin && activePartner?.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-emerald-500"} flex items-center justify-center text-slate-800 font-extrabold text-xs uppercase shadow-sm shrink-0`}>
+              <div className={`w-9 h-9 rounded-full ${isMainAdmin && activePartner?.isVip ? "bg-gradient-to-br from-[#ffd700] to-[#ffa500]" : "bg-[#00a884]"} flex items-center justify-center text-white font-extrabold text-xs uppercase shadow-sm shrink-0`}>
                 {isMainAdmin ? (activePartner?.username?.[0] || "C") : "N"}
               </div>
               <div className="min-w-0">
@@ -737,13 +737,18 @@ export default function WhatsAppChat({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          style={{
-            backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
-            backgroundSize: "380px",
-            backgroundRepeat: "repeat",
-            opacity: 0.98
-          }}
         >
+          {/* Faint Background image overlay to prevent opacity bleeding to messages */}
+          <div 
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')",
+              backgroundSize: "380px",
+              backgroundRepeat: "repeat",
+              opacity: 0.08
+            }}
+          />
+
           {isDragging && (
             <div className="absolute inset-0 bg-[#00a884]/15 border-4 border-dashed border-[#00a884] rounded-2xl flex flex-col items-center justify-center z-50 pointer-events-none animate-pulse">
               <Paperclip className="w-12 h-12 text-[#00a884] mb-2" />
@@ -751,7 +756,7 @@ export default function WhatsAppChat({
             </div>
           )}
           {/* Support Safe Banner */}
-          <div className="flex justify-center my-1.5 select-none">
+          <div className="flex justify-center my-1.5 select-none relative z-10">
             <div className="bg-[#ffe194]/70 border border-[#f5c347]/30 px-3 py-1.5 rounded-lg flex items-center gap-2 text-[10px] text-[#604b1e] max-w-[320px] text-center shadow-sm font-medium">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span>Messages are end-to-end encrypted with SSL security.</span>
@@ -764,14 +769,14 @@ export default function WhatsAppChat({
                 <MessageSquare className="w-8 h-8" />
               </div>
               <div className="max-w-[280px]">
-                <h4 className="text-sm font-black uppercase text-[#111b21] tracking-wider">Chat Support Panel</h4>
+                <h4 className="text-sm font-black uppercase text-[#111b21] tracking-wider font-sans">Chat Support Panel</h4>
                 <p className="text-[10px] text-[#667781] mt-1 leading-relaxed">
                   Select any active client from the left menu panel to view transaction histories and respond instantly.
                 </p>
               </div>
             </div>
           ) : activeMessages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2 select-none">
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2 select-none relative z-10">
               <p className="text-xs font-bold text-[#111b21]">No messages yet</p>
               <p className="text-[10px] text-[#667781] max-w-[200px] leading-relaxed">
                 {isMainAdmin 
@@ -785,36 +790,40 @@ export default function WhatsAppChat({
               return (
                 <div 
                   key={msg.id || idx} 
-                  className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                  className={`flex ${isMe ? "justify-end" : "justify-start"} relative z-10`}
                 >
                   <div className={`max-w-[70%] rounded-2xl p-2.5 shadow-sm flex flex-col relative ${
                     isMe 
-                      ? "bg-[#d9fdd3] border border-[#e1f7de] rounded-tr-none text-[#111b21]" 
-                      : "bg-[#ffffff] border border-[#e9edef] rounded-tl-none text-[#111b21]"
+                      ? "bg-[#E2FF00] border border-[#E2FF00]/30 rounded-tr-none text-[#111b21]" 
+                      : "bg-[#870404] border border-transparent rounded-tl-none text-white"
                   }`}>
                     {/* Message Sender Name / Agent Identity */}
                     {msg.senderId === "admin" ? (
-                      <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-slate-150 select-none">
+                      <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-white/10 select-none">
                         <img
                           src={msg.agentImage || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150"}
                           alt={msg.agentName || "Support Agent"}
-                          className="w-6 h-6 rounded-full object-cover shrink-0 border border-slate-200 shadow-sm animate-fade-in"
+                          className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/10 shadow-sm animate-fade-in"
                           referrerPolicy="no-referrer"
                         />
                         <div className="flex flex-col">
-                          <span className="text-[10px] font-black text-slate-800 leading-none font-sans">
+                          <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-slate-800' : 'text-white'}`}>
                             {msg.agentName || "Sophia"}
                           </span>
-                          <span className="text-[7px] font-bold text-slate-400 tracking-wider uppercase leading-none mt-0.5">
+                          <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-slate-400' : 'text-white/60'}`}>
                             {msg.agentRole || "Support Agent"}
                           </span>
                         </div>
-                        <span className="text-[6.5px] font-bold text-emerald-600 bg-emerald-500/10 border border-emerald-500/20 px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono">
+                        <span className={`text-[6.5px] font-bold px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono ${
+                          isMe 
+                            ? "text-emerald-600 bg-emerald-500/10 border border-emerald-500/20" 
+                            : "text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/20"
+                        }`}>
                           Support
                         </span>
                       </div>
                     ) : (
-                      <span className="text-[8px] font-black uppercase tracking-wider text-[#005c4b] mb-1 select-none">
+                      <span className={`text-[8px] font-black uppercase tracking-wider mb-1 select-none ${isMe ? 'text-[#005c4b]' : 'text-[#E2FF00]'}`}>
                         {isMe ? "You" : msg.senderName}
                       </span>
                     )}
@@ -823,7 +832,7 @@ export default function WhatsAppChat({
                     {msg.images && msg.images.length > 0 && (
                       <div className={`grid gap-1 mb-1.5 rounded-lg overflow-hidden ${msg.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'} max-w-[280px]`}>
                         {msg.images.map((img: string, i: number) => (
-                          <div key={i} className="relative group overflow-hidden rounded-md border border-slate-100 bg-slate-50">
+                          <div key={i} className={`relative group overflow-hidden rounded-md border bg-slate-50 ${isMe ? 'border-slate-100' : 'border-white/5'}`}>
                             <img 
                               src={img} 
                               alt="Attached visual" 
@@ -837,13 +846,13 @@ export default function WhatsAppChat({
 
                     {/* Text */}
                     {msg.text && (
-                      <p className="text-xs leading-relaxed font-sans select-text whitespace-pre-wrap text-[#111b21]">
+                      <p className={`text-xs leading-relaxed font-sans select-text whitespace-pre-wrap ${isMe ? 'text-[#111b21]' : 'text-white'}`}>
                         {msg.text}
                       </p>
                     )}
 
                     {/* Metadata */}
-                    <div className="flex items-center justify-end gap-1 mt-1 self-end text-[#667781] select-none">
+                    <div className={`flex items-center justify-end gap-1 mt-1 self-end select-none ${isMe ? 'text-[#667781]' : 'text-white/60'}`}>
                       <span className="text-[8px] font-mono">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
@@ -878,7 +887,7 @@ export default function WhatsAppChat({
         {(!isMainAdmin || selectedUserId) && (
           <div 
             id="fixed-chat-controls-container" 
-            className="w-full bg-[#540202] z-30 flex flex-col shrink-0 relative border-t border-white/5 pb-0 mb-0"
+            className="w-full bg-[#f0f2f5] z-30 flex flex-col shrink-0 relative border-t border-[#e9edef] pb-0 mb-0"
             style={{
               paddingBottom: "0px",
               marginBottom: "0px"
@@ -886,23 +895,23 @@ export default function WhatsAppChat({
           >
             {/* Active Identity selector for admin */}
             {isMainAdmin && agents.length > 0 && (
-              <div className="px-4 py-2.5 bg-black/30 border-b border-white/5 flex flex-wrap items-center justify-between gap-3 text-white/90 select-none">
+              <div className="px-4 py-2.5 bg-[#eae6df] border-b border-[#e9edef] flex flex-wrap items-center justify-between gap-3 text-slate-800 select-none">
                 <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                  <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">
                     Reply Identity:
                   </span>
                   {(() => {
                     const activeAgent = agents.find(a => a.id === selectedAgentId) || DEFAULT_AGENTS.find(a => a.id === "sophia") || DEFAULT_AGENTS[1];
                     return (
-                      <div className="flex items-center gap-1.5 bg-white/5 px-2.5 py-1 rounded-full border border-white/10 shadow-inner">
+                      <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-full border border-slate-200 shadow-sm">
                         <img 
                           src={activeAgent.imageUrl} 
                           alt={activeAgent.name} 
-                          className="w-5 h-5 rounded-full object-cover shrink-0 border border-white/20" 
+                          className="w-5 h-5 rounded-full object-cover shrink-0 border border-slate-100" 
                           referrerPolicy="no-referrer"
                         />
-                        <span className="text-[10px] font-black text-[#E2FF00] font-sans">{activeAgent.name}</span>
-                        <span className="text-[8px] font-bold text-slate-300">({activeAgent.role})</span>
+                        <span className="text-[10px] font-black text-[#00a884] font-sans">{activeAgent.name}</span>
+                        <span className="text-[8px] font-bold text-slate-500">({activeAgent.role})</span>
                         <span className={`w-1.5 h-1.5 rounded-full ${
                           activeAgent.status === "available" ? "bg-emerald-500 animate-pulse" :
                           activeAgent.status === "busy" ? "bg-amber-500" : "bg-slate-400"
@@ -914,7 +923,7 @@ export default function WhatsAppChat({
                 
                 {/* Switches buttons */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[8px] font-mono text-slate-400 uppercase tracking-wider">Switch Agent:</span>
+                  <span className="text-[8px] font-mono text-slate-500 uppercase tracking-wider">Switch Agent:</span>
                   <div className="flex gap-1 animate-fade-in">
                     {agents.map((agent) => (
                       <button
@@ -923,8 +932,8 @@ export default function WhatsAppChat({
                         onClick={() => setSelectedAgentId(agent.id)}
                         className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
                           selectedAgentId === agent.id
-                            ? "bg-[#E2FF00] text-black shadow-md font-extrabold scale-105"
-                            : "bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white"
+                            ? "bg-[#00a884] text-white shadow-md font-extrabold scale-105"
+                            : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
                         }`}
                         title={`Transferred/switch to ${agent.name} (${agent.role})`}
                       >
@@ -935,7 +944,7 @@ export default function WhatsAppChat({
                   <button
                     type="button"
                     onClick={() => setShowAgentsModal(true)}
-                    className="p-1 bg-white/5 hover:bg-[#E2FF00]/20 border border-white/10 hover:border-[#E2FF00]/40 rounded text-yellow-400 hover:text-yellow-300 transition-all active:scale-95 cursor-pointer flex items-center justify-center h-[22px] w-[22px]"
+                    className="p-1 bg-white hover:bg-slate-50 border border-slate-200 rounded text-slate-600 transition-all active:scale-95 cursor-pointer flex items-center justify-center h-[22px] w-[22px]"
                     title="Manage support agents and availability status"
                   >
                     <Settings className="w-3.5 h-3.5" />
@@ -946,9 +955,9 @@ export default function WhatsAppChat({
 
             {/* Attached Image Previews Rail */}
             {attachedImages.length > 0 && (
-              <div className="px-4 py-2 bg-[#540202] border-b border-white/10 flex items-center gap-3 overflow-x-auto scrollbar-none animate-fade-in shrink-0">
+              <div className="px-4 py-2 bg-[#f0f2f5] border-b border-[#e9edef] flex items-center gap-3 overflow-x-auto scrollbar-none animate-fade-in shrink-0">
                 {attachedImages.map((img, i) => (
-                  <div key={i} className="relative shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 border-[#E2FF00] shadow-md group">
+                  <div key={i} className="relative shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 border-[#00a884] shadow-md group">
                     <img src={img} alt="Preview" className="w-full h-full object-cover" />
                     <button
                       type="button"
@@ -961,7 +970,7 @@ export default function WhatsAppChat({
                     </button>
                   </div>
                 ))}
-                <div className="text-[10px] text-white/70 font-sans font-bold uppercase shrink-0">
+                <div className="text-[10px] text-slate-600 font-sans font-bold uppercase shrink-0">
                   {attachedImages.length} file(s) selected
                 </div>
               </div>
@@ -971,14 +980,14 @@ export default function WhatsAppChat({
             <form 
               id="chat-message-form"
               onSubmit={handleSend} 
-              className="py-0 px-3 bg-[#540202] flex items-end gap-2.5 shrink-0 relative z-20"
+              className="py-2.5 px-3 bg-[#f0f2f5] flex items-end gap-2.5 shrink-0 relative z-20"
             >
               {/* Left trigger buttons */}
-              <div className="flex items-center gap-1.5 text-white/90 mb-1">
+              <div className="flex items-center gap-1.5 text-slate-600 mb-1">
                 <button
                   type="button"
                   onClick={handleAttachmentClick}
-                  className="p-2 rounded-full text-white hover:text-[#E2FF00] hover:bg-white/10 cursor-pointer transition-all active:scale-90"
+                  className="p-2 rounded-full text-slate-600 hover:text-[#00a884] hover:bg-black/5 cursor-pointer transition-all active:scale-90"
                   title="Attach images"
                 >
                   <Paperclip className="w-5 h-5 shrink-0" />
@@ -1003,7 +1012,7 @@ export default function WhatsAppChat({
                   onChange={(e) => setInputText(e.target.value)}
                   placeholder="Type your message..."
                   rows={1}
-                  className="w-full pl-4 pr-3 py-2.5 bg-white/95 focus:bg-white border border-transparent rounded-xl text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#E2FF00] placeholder-slate-400 transition-all shadow-sm resize-none max-h-[144px] overflow-y-auto block leading-relaxed"
+                  className="w-full pl-4 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#00a884] placeholder-slate-400 transition-all shadow-sm resize-none max-h-[144px] overflow-y-auto block leading-relaxed"
                   style={{ height: "38px" }}
                 />
               </div>
@@ -1013,7 +1022,7 @@ export default function WhatsAppChat({
                 id="send-message-btn"
                 type="submit"
                 disabled={!inputText.trim() && attachedImages.length === 0}
-                className="w-10 h-10 rounded-full bg-[#E2FF00] text-[#300202] flex items-center justify-center shrink-0 active:scale-95 hover:scale-105 disabled:opacity-40 disabled:scale-100 disabled:cursor-not-allowed transition-all cursor-pointer shadow-md mb-0.5"
+                className="w-10 h-10 rounded-full bg-[#00a884] text-white flex items-center justify-center shrink-0 active:scale-95 hover:scale-105 disabled:opacity-40 disabled:scale-100 disabled:cursor-not-allowed transition-all cursor-pointer shadow-md mb-0.5"
               >
                 <Send className="w-4 h-4 ml-0.5" strokeWidth={2.5} />
               </button>
