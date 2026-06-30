@@ -276,6 +276,11 @@ export default function WhatsAppChat({
     }
   }, [currentUser, isMainAdmin, db]);
   
+  // Selected user for Admin chat
+  const [localSelectedUserId, localSetSelectedUserId] = useState<string | null>(null);
+  const selectedUserId = externalSelectedUserId !== undefined ? externalSelectedUserId : localSelectedUserId;
+  const setSelectedUserId = externalSetSelectedUserId !== undefined ? externalSetSelectedUserId : localSetSelectedUserId;
+  
   // Auto-select agent assigned to the selected client
   useEffect(() => {
     if (isMainAdmin && selectedUserId && allOrders.length > 0) {
@@ -285,11 +290,6 @@ export default function WhatsAppChat({
       }
     }
   }, [selectedUserId, allOrders, isMainAdmin]);
-  
-  // Selected user for Admin chat
-  const [localSelectedUserId, localSetSelectedUserId] = useState<string | null>(null);
-  const selectedUserId = externalSelectedUserId !== undefined ? externalSelectedUserId : localSelectedUserId;
-  const setSelectedUserId = externalSetSelectedUserId !== undefined ? externalSetSelectedUserId : localSetSelectedUserId;
   
   // Search state for Admin users list
   const [searchQuery, setSearchQuery] = useState("");

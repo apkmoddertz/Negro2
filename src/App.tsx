@@ -30,6 +30,7 @@ import {
   Check,
   ExternalLink,
   ShieldAlert,
+  ShieldCheck,
   Globe,
   Coins,
   Camera,
