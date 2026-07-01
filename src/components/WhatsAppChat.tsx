@@ -149,6 +149,7 @@ export default function WhatsAppChat({
   // Subscription Orders states
   const [userOrders, setUserOrders] = useState<any[]>([]);
   const [allOrders, setAllOrders] = useState<any[]>([]);
+  const [assignedOrderIds, setAssignedOrderIds] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const agentFileInputRef = useRef<HTMLInputElement>(null);
@@ -996,7 +997,7 @@ export default function WhatsAppChat({
       )}
 
       {/* CHAT MAIN CONVERSATION WINDOW */}
-      <div id="chat-conversation-panel" className="flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden">
+      <div id="chat-conversation-panel" className={`flex-1 flex flex-col bg-[#efeae2] relative border-l border-[#d1d7db] h-full overflow-hidden ${isMainAdmin && !selectedUserId ? "hidden md:flex" : "flex"}`}>
         
         {/* CONVERSATION TOP BAR REMOVED - USING MAIN TOP HEADER */}
 
@@ -1040,7 +1041,7 @@ export default function WhatsAppChat({
 
         {/* ADMIN AGENT ASSIGNMENT OVERLAY PANEL */}
         {isMainAdmin && selectedUserId && (() => {
-          const activeOrder = allOrders.find(o => o.userId === selectedUserId && o.status === "pending_agent");
+          const activeOrder = allOrders.find(o => o.userId === selectedUserId && o.status === "pending_agent" && !assignedOrderIds.includes(o.id));
           if (activeOrder) {
             return (
               <div className="bg-gradient-to-r from-[#005c4b]/95 via-[#008069]/90 to-[#00a884]/85 border-b border-[#00a884]/30 text-white p-4.5 flex flex-col gap-3 shrink-0 z-20 shadow-md animate-fade-in select-none">
@@ -1064,6 +1065,9 @@ export default function WhatsAppChat({
                         type="button"
                         onClick={async () => {
                           try {
+                            // Immediately hide order overlay
+                            setAssignedOrderIds(prev => [...prev, activeOrder.id]);
+
                             // Update order status and assign agent
                             await setDoc(doc(db, "orders", activeOrder.id), {
                               status: "active",

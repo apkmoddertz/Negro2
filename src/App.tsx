@@ -4391,7 +4391,7 @@ export default function App() {
       )}
 
       {/* Floating Action Button for WhatsApp Chat Support */}
-      {currentUser && activeTab !== "chats" && !openedCategoryId && (
+      {currentUser && activeTab !== "chats" && (
         <div className={`fixed ${isMainAdmin ? "bottom-24" : "bottom-6"} right-6 z-50 flex items-end gap-3 pointer-events-none`}>
           {/* Pop-up message near chat floating icon */}
           <AnimatePresence>
