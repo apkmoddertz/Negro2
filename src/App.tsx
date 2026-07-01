@@ -106,6 +106,78 @@ function handleFirestoreError(error: any, operationType: string, path: string | 
   throw new Error(JSON.stringify(errInfo));
 }
 
+const getTicketDateValue = (dateStr: string): number => {
+  const normalized = dateStr.trim().toUpperCase();
+  if (normalized.includes("TODAY")) {
+    return Number.MAX_SAFE_INTEGER; // Put today matches strictly at the top!
+  }
+  
+  // Try to parse standard formats
+  const parsed = Date.parse(normalized);
+  if (!isNaN(parsed)) {
+    return parsed;
+  }
+  
+  // Fallback for cases like "24 JUNE 2026"
+  const match = normalized.match(/^(\d{1,2})\s+([A-Z]+)\s+(\d{4})$/);
+  if (match) {
+    const day = parseInt(match[1], 10);
+    const monthName = match[2];
+    const year = parseInt(match[3], 10);
+    
+    const months: Record<string, number> = {
+      JAN: 0, JAN_N: 0, JANUARY: 0,
+      FEB: 1, FEBRUARY: 1,
+      MAR: 2, MARCH: 2,
+      APR: 3, APRIL: 3,
+      MAY: 4,
+      JUN: 5, JUNE: 5,
+      JUL: 6, JULY: 6,
+      AUG: 7, AUGUST: 7,
+      SEP: 8, SEPTEMBER: 8,
+      OCT: 9, OCTOBER: 9,
+      NOV: 10, NOVEMBER: 10,
+      DEC: 11, DECEMBER: 11
+    };
+    
+    const shortMonth = monthName.substring(0, 3);
+    const month = months[shortMonth] !== undefined ? months[shortMonth] : 0;
+    return new Date(year, month, day).getTime();
+  }
+  
+  // Try custom split DD/MM/YYYY or MM/DD/YYYY
+  const parts = normalized.split(/[-/]/);
+  if (parts.length === 3) {
+    // If it's YYYY-MM-DD
+    if (parts[0].length === 4) {
+      const y = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10) - 1;
+      const d = parseInt(parts[2], 10);
+      return new Date(y, m, d).getTime();
+    }
+    // If it's DD/MM/YYYY
+    const d = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const y = parseInt(parts[2], 10);
+    if (!isNaN(d) && !isNaN(m) && !isNaN(y)) {
+      return new Date(y, m, d).getTime();
+    }
+  }
+  
+  return 0; // fallback
+};
+
+const sortCategoryTickets = (cat: CategoryData): CategoryData => {
+  if (!cat || !cat.tickets || cat.tickets.length === 0) return cat;
+  const sortedTickets = [...cat.tickets].sort((a, b) => {
+    return getTicketDateValue(b.date) - getTicketDateValue(a.date);
+  });
+  return {
+    ...cat,
+    tickets: sortedTickets
+  };
+};
+
 export default function App() {
   // Auth states
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -143,8 +215,8 @@ export default function App() {
   const [adminSubTab, setAdminSubTab] = useState<"pending" | "users">("pending");
 
   // Firestore categories state
-  const [freeCategories, setFreeCategories] = useState<CategoryData[]>(freeTips);
-  const [vipCategories, setVipCategories] = useState<CategoryData[]>(vipTips);
+  const [freeCategories, setFreeCategories] = useState<CategoryData[]>(() => freeTips.map(sortCategoryTickets));
+  const [vipCategories, setVipCategories] = useState<CategoryData[]>(() => vipTips.map(sortCategoryTickets));
   const [isSeeding, setIsSeeding] = useState(false);
 
   // Edit/Add Match states
@@ -396,20 +468,20 @@ export default function App() {
         // Match the order of original lists (keep default tips if not in Firestore)
         const orderedFree = freeTips.map(orig => {
           const found = freeList.find(c => c.id === orig.id);
-          return found || orig;
+          return sortCategoryTickets(found || orig);
         });
 
         const orderedVip = vipTips.map(orig => {
           const found = vipList.find(c => c.id === orig.id);
-          return found || orig;
+          return sortCategoryTickets(found || orig);
         });
 
         setFreeCategories(orderedFree);
         setVipCategories(orderedVip);
       } else {
         // If Firestore categories are empty, keep standard defaults
-        setFreeCategories(freeTips);
-        setVipCategories(vipTips);
+        setFreeCategories(freeTips.map(sortCategoryTickets));
+        setVipCategories(vipTips.map(sortCategoryTickets));
       }
     }, (error) => {
       console.error("Error listening to categories: ", error);
