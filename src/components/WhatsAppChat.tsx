@@ -110,8 +110,20 @@ interface WhatsAppChatProps {
   sendFCMNotificationProgrammatic: (titleText: string, messageText: string) => Promise<void>;
   selectedUserId?: string | null;
   setSelectedUserId?: (id: string | null) => void;
-  adminSettings: { isOnline: boolean; customGreeting: string };
-  setAdminSettings: React.Dispatch<React.SetStateAction<{ isOnline: boolean; customGreeting: string }>>;
+  adminSettings: {
+    isOnline: boolean;
+    customGreeting: string;
+    showAgentsOnAdmin?: boolean;
+    showAgentsInChatBox?: boolean;
+    defaultAgentId?: string;
+  };
+  setAdminSettings: React.Dispatch<React.SetStateAction<{
+    isOnline: boolean;
+    customGreeting: string;
+    showAgentsOnAdmin?: boolean;
+    showAgentsInChatBox?: boolean;
+    defaultAgentId?: string;
+  }>>;
 }
 
 export default function WhatsAppChat({
@@ -772,7 +784,9 @@ export default function WhatsAppChat({
 
       if (!targetUserId) return;
 
-      const activeAgent = agents.find(a => a.id === selectedAgentId) || DEFAULT_AGENTS.find(a => a.id === "sophia") || DEFAULT_AGENTS[1];
+      const defaultAgentId = adminSettings.defaultAgentId || "sophia";
+      const currentAgentId = (adminSettings.showAgentsOnAdmin !== false) ? selectedAgentId : defaultAgentId;
+      const activeAgent = agents.find(a => a.id === currentAgentId) || agents.find(a => a.id === defaultAgentId) || DEFAULT_AGENTS.find(a => a.id === defaultAgentId) || DEFAULT_AGENTS.find(a => a.id === "sophia") || DEFAULT_AGENTS[1];
       const messageData = {
         id: messageId,
         userId: targetUserId,
@@ -923,6 +937,93 @@ export default function WhatsAppChat({
                   </button>
                 </div>
               </div>
+
+              {/* Show/Hide Agents Admin Setting */}
+              <div className="flex items-center justify-between border-t border-[#f0f2f5] pt-2.5">
+                <span className="font-bold text-[#111b21] flex items-center gap-1.5">
+                  Show Agents Bar
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const nextShow = adminSettings.showAgentsOnAdmin !== false ? false : true;
+                    try {
+                      await setDoc(doc(db, "admin_settings", "global"), {
+                        ...adminSettings,
+                        showAgentsOnAdmin: nextShow
+                      });
+                      setAdminSettings(prev => ({ ...prev, showAgentsOnAdmin: nextShow }));
+                    } catch (err) {
+                      console.error("Error updating show agents status:", err);
+                    }
+                  }}
+                  className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
+                    adminSettings.showAgentsOnAdmin !== false
+                      ? "bg-[#00a884] text-white hover:bg-[#009171] shadow-sm" 
+                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  }`}
+                >
+                  {adminSettings.showAgentsOnAdmin !== false ? "Visible" : "Hidden"}
+                </button>
+              </div>
+
+              {/* Show/Hide Agents on Chat Box Setting */}
+              <div className="flex items-center justify-between border-t border-[#f0f2f5] pt-2.5">
+                <span className="font-bold text-[#111b21] flex items-center gap-1.5">
+                  Agents on Chat Box
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const nextShow = adminSettings.showAgentsInChatBox !== false ? false : true;
+                    try {
+                      await setDoc(doc(db, "admin_settings", "global"), {
+                        ...adminSettings,
+                        showAgentsInChatBox: nextShow
+                      });
+                      setAdminSettings(prev => ({ ...prev, showAgentsInChatBox: nextShow }));
+                    } catch (err) {
+                      console.error("Error updating show agents in chat status:", err);
+                    }
+                  }}
+                  className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
+                    adminSettings.showAgentsInChatBox !== false
+                      ? "bg-[#00a884] text-white hover:bg-[#009171] shadow-sm" 
+                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  }`}
+                >
+                  {adminSettings.showAgentsInChatBox !== false ? "Visible" : "Hidden"}
+                </button>
+              </div>
+
+              {/* Default Support Agent Dropdown Setting */}
+              <div className="space-y-1.5 border-t border-[#f0f2f5] pt-2.5">
+                <label className="text-[9px] text-slate-500 font-black uppercase block tracking-wider">
+                  Default Reply Agent
+                </label>
+                <select
+                  value={adminSettings.defaultAgentId || "sophia"}
+                  onChange={async (e) => {
+                    const nextAgentId = e.target.value;
+                    try {
+                      await setDoc(doc(db, "admin_settings", "global"), {
+                        ...adminSettings,
+                        defaultAgentId: nextAgentId
+                      });
+                      setAdminSettings(prev => ({ ...prev, defaultAgentId: nextAgentId }));
+                    } catch (err) {
+                      console.error("Error updating default agent:", err);
+                    }
+                  }}
+                  className="w-full bg-[#f0f2f5] border border-[#e9edef] px-2 py-1.5 rounded-lg text-xs font-bold text-[#111b21] focus:outline-none focus:border-[#00a884] focus:bg-white transition-all font-sans cursor-pointer"
+                >
+                  {(agents.length > 0 ? agents : DEFAULT_AGENTS).map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name} ({agent.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             
             {/* Search Input */}
@@ -1022,15 +1123,28 @@ export default function WhatsAppChat({
             );
           } else if (activeOrder) {
             const agent = agents.find(a => a.id === activeOrder.assignedAgentId) || DEFAULT_AGENTS.find(a => a.id === "sophia");
+            const showAgents = adminSettings.showAgentsInChatBox !== false;
             return (
               <div className="bg-gradient-to-r from-emerald-500/15 via-emerald-600/10 to-emerald-500/5 border-b border-emerald-500/20 px-4 py-3 flex items-start gap-3 shrink-0 z-20 animate-fade-in select-none">
-                <div className="w-7 h-7 rounded-full overflow-hidden border border-emerald-500/30 shrink-0 mt-0.5">
-                  <img src={activeOrder.assignedAgentImage || agent.imageUrl} alt={activeOrder.assignedAgentName || agent.name} className="w-full h-full object-cover" />
+                <div className="w-7 h-7 rounded-full overflow-hidden border border-emerald-500/30 shrink-0 mt-0.5 flex items-center justify-center bg-emerald-500/10 text-emerald-600">
+                  {showAgents ? (
+                    <img src={activeOrder.assignedAgentImage || agent.imageUrl} alt={activeOrder.assignedAgentName || agent.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xs">🛡️</span>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-[10px] font-black uppercase text-emerald-700 tracking-wider">Connected with {activeOrder.assignedAgentName || agent.name}</h4>
+                  <h4 className="text-[10px] font-black uppercase text-emerald-700 tracking-wider">
+                    {showAgents ? `Connected with ${activeOrder.assignedAgentName || agent.name}` : "Support Team Connected"}
+                  </h4>
                   <p className="text-[9px] text-emerald-950 leading-normal mt-0.5 font-bold">
-                    Support Agent <span className="text-emerald-800">{activeOrder.assignedAgentName || agent.name} ({activeOrder.assignedAgentRole || agent.role})</span> is now assigned to assist you. Please wait for payment coordinates.
+                    {showAgents ? (
+                      <>
+                        Support Agent <span className="text-emerald-800">{activeOrder.assignedAgentName || agent.name} ({activeOrder.assignedAgentRole || agent.role})</span> is now assigned to assist you. Please wait for payment coordinates.
+                      </>
+                    ) : (
+                      "Our support team is now assigned to assist you. Please wait for payment coordinates."
+                    )}
                   </p>
                 </div>
               </div>
@@ -1203,29 +1317,54 @@ export default function WhatsAppChat({
                   }`}>
                     {/* Message Sender Name / Agent Identity */}
                     {msg.senderId === "admin" ? (
-                      <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-white/10 select-none">
-                        <img
-                          src={msg.agentImage || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150"}
-                          alt={msg.agentName || "Support Agent"}
-                          className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/10 shadow-sm animate-fade-in"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="flex flex-col">
-                          <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-slate-800' : 'text-white'}`}>
-                            {msg.agentName || "Sophia"}
-                          </span>
-                          <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-slate-400' : 'text-white/60'}`}>
-                            {msg.agentRole || "Support Agent"}
+                      adminSettings.showAgentsInChatBox !== false ? (
+                        <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-white/10 select-none">
+                          <img
+                            src={msg.agentImage || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150"}
+                            alt={msg.agentName || "Support Agent"}
+                            className="w-6 h-6 rounded-full object-cover shrink-0 border border-white/10 shadow-sm animate-fade-in"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="flex flex-col">
+                            <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-slate-800' : 'text-white'}`}>
+                              {msg.agentName || "Sophia"}
+                            </span>
+                            <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-slate-400' : 'text-white/60'}`}>
+                              {msg.agentRole || "Support Agent"}
+                            </span>
+                          </div>
+                          <span className={`text-[6.5px] font-bold px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono ${
+                            isMe 
+                              ? "text-emerald-600 bg-emerald-500/10 border border-emerald-500/20" 
+                              : "text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/20"
+                          }`}>
+                            Support
                           </span>
                         </div>
-                        <span className={`text-[6.5px] font-bold px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono ${
-                          isMe 
-                            ? "text-emerald-600 bg-emerald-500/10 border border-emerald-500/20" 
-                            : "text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/20"
-                        }`}>
-                          Support
-                        </span>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-white/10 select-none">
+                          <div className={`w-6 h-6 rounded-full shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-bold ${
+                            isMe ? 'bg-slate-800/10 text-slate-800' : 'bg-white/10 text-white'
+                          }`}>
+                            🛡️
+                          </div>
+                          <div className="flex flex-col">
+                            <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-slate-800' : 'text-white'}`}>
+                              Support Team
+                            </span>
+                            <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-slate-400' : 'text-white/60'}`}>
+                              Official Representative
+                            </span>
+                          </div>
+                          <span className={`text-[6.5px] font-bold px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono ${
+                            isMe 
+                              ? "text-emerald-600 bg-emerald-500/10 border border-emerald-500/20" 
+                              : "text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/20"
+                          }`}>
+                            Support
+                          </span>
+                        </div>
+                      )
                     ) : (
                       <span className={`text-[8px] font-black uppercase tracking-wider mb-1 select-none ${isMe ? 'text-[#005c4b]' : 'text-[#E2FF00]'}`}>
                         {isMe ? "You" : msg.senderName}
@@ -1373,7 +1512,7 @@ export default function WhatsAppChat({
             }}
           >
             {/* Active Identity selector for admin */}
-            {isMainAdmin && agents.length > 0 && (
+            {isMainAdmin && agents.length > 0 && adminSettings.showAgentsOnAdmin !== false && (
               <div className="px-4 py-2.5 bg-[#eae6df] border-b border-[#e9edef] flex flex-wrap items-center justify-between gap-3 text-slate-800 select-none">
                 <div className="flex items-center gap-2">
                   <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider">

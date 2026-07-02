@@ -196,9 +196,18 @@ export default function App() {
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
   // Admin Global Settings
-  const [adminSettings, setAdminSettings] = useState<{ isOnline: boolean; customGreeting: string }>({
+  const [adminSettings, setAdminSettings] = useState<{
+    isOnline: boolean;
+    customGreeting: string;
+    showAgentsOnAdmin?: boolean;
+    showAgentsInChatBox?: boolean;
+    defaultAgentId?: string;
+  }>({
     isOnline: true,
-    customGreeting: "Hi 👋, feel free to ask any questions!"
+    customGreeting: "Hi 👋, feel free to ask any questions!",
+    showAgentsOnAdmin: true,
+    showAgentsInChatBox: true,
+    defaultAgentId: "sophia"
   });
   const [showGreetingBubble, setShowGreetingBubble] = useState(true);
 
@@ -439,12 +448,18 @@ export default function App() {
         const data = docSnap.data();
         setAdminSettings({
           isOnline: data.isOnline !== false, // default true
-          customGreeting: data.customGreeting || "Hi 👋, feel free to ask any questions!"
+          customGreeting: data.customGreeting || "Hi 👋, feel free to ask any questions!",
+          showAgentsOnAdmin: data.showAgentsOnAdmin !== false, // default true
+          showAgentsInChatBox: data.showAgentsInChatBox !== false, // default true
+          defaultAgentId: data.defaultAgentId || "sophia" // default "sophia"
         });
       } else {
         setAdminSettings({
           isOnline: true,
-          customGreeting: "Hi 👋, feel free to ask any questions!"
+          customGreeting: "Hi 👋, feel free to ask any questions!",
+          showAgentsOnAdmin: true,
+          showAgentsInChatBox: true,
+          defaultAgentId: "sophia"
         });
       }
     }, (err) => {
@@ -1572,6 +1587,21 @@ export default function App() {
     const val = score.trim();
     const lower = val.toLowerCase();
 
+    // New format shorthand handlers:
+    const cleaned = val.replace(/\s+/g, "");
+    // e.g., -3.5 -> Under {-3.5}
+    if (/^-\d+(\.\d+)?$/.test(cleaned)) {
+      return `Under {${cleaned}}`;
+    }
+    // e.g., +3.5 -> Over {+3.5}
+    if (/^\+\d+(\.\d+)?$/.test(cleaned)) {
+      return `Over {${cleaned}}`;
+    }
+    // e.g., 1:1 -> Correct Score {1:1}
+    if (/^\d+:\d+$/.test(cleaned)) {
+      return `Correct Score {${cleaned}}`;
+    }
+
     // 1. Double Chance mappings
     if (lower === "home win or draw" || lower === "1x" || lower === "home or draw") {
       return "Double Chance{1X}";
@@ -1584,13 +1614,13 @@ export default function App() {
     }
 
     // 2. Home Win / Away Win
-    if (lower === "home win" || lower === "home") {
+    if (lower === "home win" || lower === "home" || lower === "1") {
       return "Home Win{1}";
     }
-    if (lower === "away win" || lower === "away") {
+    if (lower === "away win" || lower === "away" || lower === "2") {
       return "Away Win{2}";
     }
-    if (lower === "draw" || lower === "draw x") {
+    if (lower === "draw" || lower === "draw x" || lower === "x") {
       return "Draw{X}";
     }
 
@@ -2545,29 +2575,12 @@ export default function App() {
             )
           ) : (
             <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
-              {isMainAdmin ? "Negro Admin" : "Negro Tips"}{" "}
-              {!isMainAdmin && (
-                <>
-                  <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-slate-400"} inline-block`} />
-                  <span className={`text-[9px] ${adminSettings.isOnline ? "text-emerald-400" : "text-slate-400"} font-bold lowercase tracking-normal`}>
-                    {adminSettings.isOnline ? "online" : "offline"}
-                  </span>
-                </>
-              )}
+              {isMainAdmin ? "Negro Admin" : "Negro Tips"}
             </span>
           )}
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Global Connection Online Status Text */}
-          {!isMainAdmin && (
-            <div className={`flex items-center gap-1.5 ${adminSettings.isOnline ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" : "bg-slate-500/10 border-slate-500/20 text-slate-400"} px-2 py-0.5 rounded-full select-none`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 animate-pulse shadow-[0_0_6px_#10B981]" : "bg-slate-400"}`} />
-              <span className="text-[8.5px] font-mono font-black uppercase tracking-wider">
-                {adminSettings.isOnline ? "ONLINE" : "OFFLINE"}
-              </span>
-            </div>
-          )}
 
           <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border ${
             activeTab === "chats"
