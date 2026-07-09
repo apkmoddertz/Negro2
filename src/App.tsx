@@ -327,6 +327,19 @@ export default function App() {
         }
       };
 
+      // Aggressive scroll prevention to keep layout completely fixed
+      const preventWindowScroll = () => {
+        if (window.scrollY !== 0 || window.scrollX !== 0) {
+          window.scrollTo(0, 0);
+        }
+        if (document.body.scrollTop !== 0) {
+          document.body.scrollTop = 0;
+        }
+        if (document.documentElement.scrollTop !== 0) {
+          document.documentElement.scrollTop = 0;
+        }
+      };
+
       const vv = window.visualViewport;
       if (vv) {
         vv.addEventListener('resize', handleResize);
@@ -334,11 +347,16 @@ export default function App() {
         handleResize();
       }
 
+      window.addEventListener('scroll', preventWindowScroll, { passive: true });
+      document.addEventListener('scroll', preventWindowScroll, { passive: true });
+
       return () => {
         if (vv) {
           vv.removeEventListener('resize', handleResize);
           vv.removeEventListener('scroll', handleResize);
         }
+        window.removeEventListener('scroll', preventWindowScroll);
+        document.removeEventListener('scroll', preventWindowScroll);
         document.body.style.overflow = "";
         document.body.style.position = "";
         document.body.style.width = "";

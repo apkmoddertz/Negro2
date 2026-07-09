@@ -759,6 +759,24 @@ export default function WhatsAppChat({
     }, 2500);
   };
 
+  const handleInputFocus = () => {
+    // Scroll chat window to bottom to keep messages in view when keyboard pops up
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+      }
+    }, 150);
+
+    // Prevent Safari layout shifting by resetting any window scrolling
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+      if (document.documentElement) {
+        document.documentElement.scrollTop = 0;
+      }
+    }, 50);
+  };
+
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const hasText = !!inputText.trim();
@@ -1505,9 +1523,9 @@ export default function WhatsAppChat({
         {(!isMainAdmin || selectedUserId) && (
           <div 
             id="fixed-chat-controls-container" 
-            className="w-full bg-[#f0f2f5] z-30 flex flex-col shrink-0 relative border-t border-[#e9edef] pb-0 mb-0"
+            className="w-full bg-[#f0f2f5] z-30 flex flex-col shrink-0 sticky bottom-0 border-t border-[#e9edef] pb-[env(safe-area-inset-bottom,0px)] mb-0"
             style={{
-              paddingBottom: "0px",
+              paddingBottom: "env(safe-area-inset-bottom, 0px)",
               marginBottom: "0px"
             }}
           >
@@ -1642,6 +1660,7 @@ export default function WhatsAppChat({
                   id="message-input-field"
                   value={inputText}
                   onChange={(e) => handleMessageInputChange(e.target.value)}
+                  onFocus={handleInputFocus}
                   placeholder="Type your message..."
                   rows={1}
                   className="w-full pl-4 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[16px] md:text-xs font-semibold text-[#111b21] focus:outline-none focus:border-[#00a884] placeholder-slate-400 transition-all shadow-sm resize-none max-h-[144px] overflow-y-auto block leading-relaxed font-sans"
