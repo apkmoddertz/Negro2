@@ -124,6 +124,8 @@ interface WhatsAppChatProps {
     showAgentsInChatBox?: boolean;
     defaultAgentId?: string;
   }>>;
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
 }
 
 export default function WhatsAppChat({
@@ -138,7 +140,9 @@ export default function WhatsAppChat({
   selectedUserId: externalSelectedUserId,
   setSelectedUserId: externalSetSelectedUserId,
   adminSettings,
-  setAdminSettings
+  setAdminSettings,
+  searchQuery: externalSearchQuery,
+  setSearchQuery: externalSetSearchQuery
 }: WhatsAppChatProps) {
   // Chat input
   const [inputText, setInputText] = useState("");
@@ -425,7 +429,9 @@ export default function WhatsAppChat({
   }, [partnerTyping]);
   
   // Search state for Admin users list
-  const [searchQuery, setSearchQuery] = useState("");
+  const [localSearchQuery, setLocalSearchQuery] = useState("");
+  const searchQuery = externalSearchQuery !== undefined ? externalSearchQuery : localSearchQuery;
+  const setSearchQuery = externalSetSearchQuery !== undefined ? externalSetSearchQuery : setLocalSearchQuery;
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   // Group messages for Admin view by user
@@ -1025,28 +1031,7 @@ export default function WhatsAppChat({
       
       {/* SIDEBAR FOR ADMIN: LIST OF USER CHATS */}
       {isMainAdmin && (
-        <div id="admin-chat-sidebar" className={`w-full md:w-[320px] border-r border-[#d1d7db] flex flex-col bg-[#ffffff] ${selectedUserId ? "hidden md:flex" : "flex"}`}>
-          <div className="p-3.5 border-b border-[#e9edef] bg-[#f0f2f5] space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black uppercase tracking-wider text-[#111b21] flex items-center gap-1.5 font-sans">
-                <MessageSquare className="w-3.5 h-3.5 text-[#00a884]" />
-                Client Chats
-              </span>
-            </div>
-            
-            {/* Search Input */}
-            <div className="relative">
-              <input
-                id="chat-search"
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search clients..."
-                className="w-full pl-8 pr-3 py-1.5 bg-[#ffffff] border border-[#e9edef] rounded-lg text-xs font-bold text-[#111b21] placeholder-slate-400 focus:outline-none focus:border-[#00a884] transition-all"
-              />
-              <Search className="absolute left-2.5 top-2.2 w-3.5 h-3.5 text-slate-400" />
-            </div>
-          </div>
+        <div id="admin-chat-sidebar" className={`w-full md:w-[320px] border-r border-[#d1d7db] flex flex-col bg-[#ffffff] h-full min-h-0 ${selectedUserId ? "hidden md:flex" : "flex"}`}>
 
           <div 
             ref={sidebarContainerRef}

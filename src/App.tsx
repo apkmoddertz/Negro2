@@ -35,7 +35,8 @@ import {
   Coins,
   Camera,
   Image,
-  UserCheck
+  UserCheck,
+  Search
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { freeTips, vipTips } from "./data/tipsData";
@@ -311,6 +312,7 @@ export default function App() {
   const [selectedChatUser, setSelectedChatUser] = useState<any | null>(null);
   const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
   const [chatInputText, setChatInputText] = useState("");
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
 
   // Fix the body and HTML layout to prevent dynamic keyboard/scrolling push of the top header
   useEffect(() => {
@@ -2775,17 +2777,36 @@ export default function App() {
                 )}
               </div>
             ) : (
-              <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
-                {isMainAdmin ? "Client Chats" : "Chat Support"}{" "}
-                {!isMainAdmin && (
-                  <>
-                    <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-slate-400"} inline-block`} />
-                    <span className={`text-[9px] ${adminSettings.isOnline ? "text-emerald-400" : "text-slate-400"} font-bold lowercase tracking-normal`}>
-                      {adminSettings.isOnline ? "online" : "offline"}
-                    </span>
-                  </>
-                )}
-              </span>
+              isMainAdmin ? (
+                <div className="relative flex items-center gap-2">
+                  <span className="text-xs font-black tracking-[0.1em] font-sans uppercase text-white hidden sm:inline-block">
+                    Client Chats
+                  </span>
+                  <div className="relative w-36 xs:w-44 sm:w-56">
+                    <input
+                      id="header-chat-search"
+                      type="text"
+                      value={chatSearchQuery}
+                      onChange={(e) => setChatSearchQuery(e.target.value)}
+                      placeholder="Search clients..."
+                      className="w-full pl-7 pr-3 py-1 bg-black/45 border border-white/10 hover:border-[#E2FF00]/30 rounded-lg text-[11px] font-medium text-slate-100 placeholder-slate-400 focus:outline-none focus:border-[#E2FF00]/60 focus:bg-black/60 transition-all font-sans"
+                    />
+                    <Search className="absolute left-2 top-2.5 w-3 h-3 text-slate-400" />
+                  </div>
+                </div>
+              ) : (
+                <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
+                  {isMainAdmin ? "Client Chats" : "Chat Support"}{" "}
+                  {!isMainAdmin && (
+                    <>
+                      <span className={`w-1.5 h-1.5 rounded-full ${adminSettings.isOnline ? "bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse" : "bg-slate-400"} inline-block`} />
+                      <span className={`text-[9px] ${adminSettings.isOnline ? "text-emerald-400" : "text-slate-400"} font-bold lowercase tracking-normal`}>
+                        {adminSettings.isOnline ? "online" : "offline"}
+                      </span>
+                    </>
+                  )}
+                </span>
+              )
             )
           ) : (
             <span className="text-sm font-black tracking-[0.2em] font-sans uppercase text-white flex items-center gap-1.5">
@@ -4373,6 +4394,8 @@ export default function App() {
               setSelectedUserId={setSelectedChatUserId}
               adminSettings={adminSettings}
               setAdminSettings={setAdminSettings}
+              searchQuery={chatSearchQuery}
+              setSearchQuery={setChatSearchQuery}
             />
           ) : (
             <div className="bg-[#121921]/90 border border-white/5 p-8 rounded-2xl text-center space-y-4 max-w-md mx-auto my-12 shadow-2xl">
