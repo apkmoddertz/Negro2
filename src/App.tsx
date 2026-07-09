@@ -2817,17 +2817,39 @@ export default function App() {
           <div className="w-full flex flex-col items-center">
             
             {/* BRAND LOGO HEADER: Replica of Prime Betting Tips but "NEGRO" */}
-            <div className="flex flex-col items-start w-full max-w-[350px] mt-4 mb-5 select-none">
-              <div className="flex items-center gap-1.5">
-                {/* Yellow triangle pointing right */}
-                <div className="w-0 h-0 border-t-[14px] border-t-transparent border-b-[14px] border-b-transparent border-l-[20px] border-l-[#E2FF00] transform skew-x-[-10deg] filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
-                <span className="text-4xl font-black italic tracking-tight text-white uppercase font-sans leading-none drop-shadow-md">
-                  Negro
+            <div className="flex items-center justify-between w-full max-w-[350px] mt-4 mb-5 select-none relative group">
+              <div className="flex flex-col items-start">
+                <div className="flex items-center gap-1.5">
+                  {/* Yellow triangle pointing right */}
+                  <div className="w-0 h-0 border-t-[14px] border-t-transparent border-b-[14px] border-b-transparent border-l-[20px] border-l-[#E2FF00] transform skew-x-[-10deg] filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
+                  <span className="text-4xl font-black italic tracking-tight text-white uppercase font-sans leading-none drop-shadow-md">
+                    Negro
+                  </span>
+                </div>
+                <span className="text-[17px] font-black italic tracking-[0.25em] text-white uppercase font-sans mt-0.5 leading-none pl-1.5 drop-shadow-sm">
+                  Betting Tips
                 </span>
               </div>
-              <span className="text-[17px] font-black italic tracking-[0.25em] text-white uppercase font-sans mt-0.5 leading-none pl-1.5 drop-shadow-sm">
-                Betting Tips
-              </span>
+
+              {/* Floating Telegram Button to attract users */}
+              <a
+                href="https://t.me/+3d0sGfhEEZZhZGY0"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 bg-gradient-to-r from-[#0088cc] via-[#24A1DE] to-[#0088cc] text-white text-[10px] font-black uppercase tracking-wider px-3.5 py-2 rounded-full border border-white/20 shadow-[0_4px_15px_rgba(0,136,204,0.4)] hover:shadow-[0_4px_25px_rgba(0,136,204,0.65)] active:scale-95 hover:scale-105 transition-all duration-300 animate-bounce cursor-pointer group-hover:animate-none"
+                style={{
+                  animationDuration: '3s'
+                }}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-[#E2FF00]"></span>
+                </span>
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.94-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.37.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/>
+                </svg>
+                <span>Join Telegram</span>
+              </a>
             </div>
 
             {/* SLIDING PILL TOGGLE (Free vs VIP) */}
