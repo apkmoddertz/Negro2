@@ -1602,6 +1602,19 @@ export default function App() {
       return `Correct Score {${cleaned}}`;
     }
 
+    // HT/FT shorthand: e.g., 1/1 -> HT/FT {1/1}, X/2 -> HT/FT {X/2}
+    if (/^[12x]\/[12x]$/i.test(cleaned)) {
+      return `HT/FT {${cleaned.toUpperCase()}}`;
+    }
+
+    // Both Teams To Score (BTTS) shorthand: e.g., Yes -> BTTS {Yes}, No -> BTTS {No}
+    if (cleaned.toLowerCase() === "yes") {
+      return "BTTS {Yes}";
+    }
+    if (cleaned.toLowerCase() === "no") {
+      return "BTTS {No}";
+    }
+
     // 1. Double Chance mappings
     if (lower === "home win or draw" || lower === "1x" || lower === "home or draw") {
       return "Double Chance{1X}";
