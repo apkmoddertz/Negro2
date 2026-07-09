@@ -2159,6 +2159,7 @@ export default function App() {
 
   const isSubscribedToActiveCategory = isMainAdmin || 
     (activeCategory?.id ? (
+      activeCategory.id.endsWith("_results") ||
       userProfile?.subscriptions?.[activeCategory.id] === true ||
       userProfile?.subscriptions?.[activeCategory.id.replace("_today", "").replace("_results", "")] === true
     ) : false);
