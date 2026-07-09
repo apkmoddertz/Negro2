@@ -1,10 +1,9 @@
 import { CategoryData } from "../types";
 
 export const freeTips: CategoryData[] = [
-  // Today & Onward
   {
     id: "free_banker_today",
-    title: "Banker Today",
+    title: "Banker (TODAY)",
     iconName: "ThumbsUp",
     tickets: [
       {
@@ -17,42 +16,9 @@ export const freeTips: CategoryData[] = [
     ]
   },
   {
-    id: "free_3picks_today",
-    title: "3Picks Today",
-    iconName: "Calendar5",
-    tickets: [
-      {
-        date: "TODAY MATCHES",
-        matches: [
-          { num: 1, home: "Liverpool", away: "Aston Villa", score: "Over 2.5 Goals", odds: "1.55", status: "pending" },
-          { num: 2, home: "Bayern Munich", away: "Frankfurt", score: "Home Win", odds: "1.30", status: "pending" },
-          { num: 3, home: "Napoli", away: "Cagliari", score: "Home Win", odds: "1.42", status: "pending" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "free_5picks_today",
-    title: "5Picks Today",
-    iconName: "Calendar10",
-    tickets: [
-      {
-        date: "TODAY MATCHES",
-        matches: [
-          { num: 1, home: "Inter Milan", away: "Torino", score: "Home Win", odds: "1.38", status: "pending" },
-          { num: 2, home: "Marseille", away: "Auxerre", score: "Over 1.5 Goals", odds: "1.25", status: "pending" },
-          { num: 3, home: "Barcelona", away: "Celta Vigo", score: "Home Win", odds: "1.32", status: "pending" },
-          { num: 4, home: "PSG", away: "Reims", score: "Home Win", odds: "1.28", status: "pending" },
-          { num: 5, home: "Porto", away: "Rio Ave", score: "Home Win", odds: "1.20", status: "pending" }
-        ]
-      }
-    ]
-  },
-  // Yesterday & Before Results
-  {
     id: "free_banker_results",
-    title: "Banker Results",
-    iconName: "Tv",
+    title: "Banker (RESULTS)",
+    iconName: "ThumbsUp",
     tickets: [
       {
         date: "24 JUNE 2026",
@@ -71,9 +37,24 @@ export const freeTips: CategoryData[] = [
     ]
   },
   {
+    id: "free_3picks_today",
+    title: "3Picks (TODAY)",
+    iconName: "Calendar5",
+    tickets: [
+      {
+        date: "TODAY MATCHES",
+        matches: [
+          { num: 1, home: "Liverpool", away: "Aston Villa", score: "Over 2.5 Goals", odds: "1.55", status: "pending" },
+          { num: 2, home: "Bayern Munich", away: "Frankfurt", score: "Home Win", odds: "1.30", status: "pending" },
+          { num: 3, home: "Napoli", away: "Cagliari", score: "Home Win", odds: "1.42", status: "pending" }
+        ]
+      }
+    ]
+  },
+  {
     id: "free_3picks_results",
-    title: "3Picks Results",
-    iconName: "PlusMinus",
+    title: "3Picks (RESULTS)",
+    iconName: "Calendar5",
     tickets: [
       {
         date: "24 JUNE 2026",
@@ -94,9 +75,26 @@ export const freeTips: CategoryData[] = [
     ]
   },
   {
+    id: "free_5picks_today",
+    title: "5Picks (TODAY)",
+    iconName: "Calendar10",
+    tickets: [
+      {
+        date: "TODAY MATCHES",
+        matches: [
+          { num: 1, home: "Inter Milan", away: "Torino", score: "Home Win", odds: "1.38", status: "pending" },
+          { num: 2, home: "Marseille", away: "Auxerre", score: "Over 1.5 Goals", odds: "1.25", status: "pending" },
+          { num: 3, home: "Barcelona", away: "Celta Vigo", score: "Home Win", odds: "1.32", status: "pending" },
+          { num: 4, home: "PSG", away: "Reims", score: "Home Win", odds: "1.28", status: "pending" },
+          { num: 5, home: "Porto", away: "Rio Ave", score: "Home Win", odds: "1.20", status: "pending" }
+        ]
+      }
+    ]
+  },
+  {
     id: "free_5picks_results",
-    title: "5Picks Results",
-    iconName: "Wallet",
+    title: "5Picks (RESULTS)",
+    iconName: "Calendar10",
     tickets: [
       {
         date: "24 JUNE 2026",
@@ -113,10 +111,9 @@ export const freeTips: CategoryData[] = [
 ];
 
 export const vipTips: CategoryData[] = [
-  // Today & Onward
   {
     id: "vip_elite_today",
-    title: "Elite Today",
+    title: "Elite (TODAY)",
     iconName: "Crown",
     tickets: [
       {
@@ -129,38 +126,9 @@ export const vipTips: CategoryData[] = [
     ]
   },
   {
-    id: "vip_htft_today",
-    title: "HT/FT Today",
-    iconName: "Shuffle",
-    tickets: [
-      {
-        date: "TODAY MATCHES",
-        matches: [
-          { num: 1, home: "Monaco", away: "Le Havre", score: "HT/FT {Draw/Home}", odds: "3.90", status: "pending" },
-          { num: 2, home: "Real Betis", away: "Las Palmas", score: "HT/FT {Home/Home}", odds: "2.50", status: "pending" }
-        ]
-      }
-    ]
-  },
-  {
-    id: "vip_cs_today",
-    title: "CS Today",
-    iconName: "Trophy",
-    tickets: [
-      {
-        date: "TODAY MATCHES",
-        matches: [
-          { num: 1, home: "Juventus", away: "Parma", score: "Correct Score {2:0}", odds: "6.00", status: "pending" },
-          { num: 2, home: "Sporting CP", away: "Moreirense", score: "Correct Score {3:1}", odds: "9.50", status: "pending" }
-        ]
-      }
-    ]
-  },
-  // Yesterday & Before Results
-  {
     id: "vip_elite_results",
-    title: "Elite Results",
-    iconName: "Target",
+    title: "Elite (RESULTS)",
+    iconName: "Crown",
     tickets: [
       {
         date: "24 JUNE 2026",
@@ -180,9 +148,23 @@ export const vipTips: CategoryData[] = [
     ]
   },
   {
+    id: "vip_htft_today",
+    title: "HT/FT (TODAY)",
+    iconName: "Shuffle",
+    tickets: [
+      {
+        date: "TODAY MATCHES",
+        matches: [
+          { num: 1, home: "Monaco", away: "Le Havre", score: "HT/FT {Draw/Home}", odds: "3.90", status: "pending" },
+          { num: 2, home: "Real Betis", away: "Las Palmas", score: "HT/FT {Home/Home}", odds: "2.50", status: "pending" }
+        ]
+      }
+    ]
+  },
+  {
     id: "vip_htft_results",
-    title: "HT/FT Results",
-    iconName: "Timer",
+    title: "HT/FT (RESULTS)",
+    iconName: "Shuffle",
     tickets: [
       {
         date: "24 JUNE 2026",
@@ -194,9 +176,23 @@ export const vipTips: CategoryData[] = [
     ]
   },
   {
+    id: "vip_cs_today",
+    title: "CS (TODAY)",
+    iconName: "Trophy",
+    tickets: [
+      {
+        date: "TODAY MATCHES",
+        matches: [
+          { num: 1, home: "Juventus", away: "Parma", score: "Correct Score {2:0}", odds: "6.00", status: "pending" },
+          { num: 2, home: "Sporting CP", away: "Moreirense", score: "Correct Score {3:1}", odds: "9.50", status: "pending" }
+        ]
+      }
+    ]
+  },
+  {
     id: "vip_cs_results",
-    title: "CS Results",
-    iconName: "Zap",
+    title: "CS (RESULTS)",
+    iconName: "Trophy",
     tickets: [
       {
         date: "24 JUNE 2026",

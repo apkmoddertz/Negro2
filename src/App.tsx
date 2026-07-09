@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { freeTips, vipTips } from "./data/tipsData";
-import WhatsAppChat from "./components/WhatsAppChat";
+import WhatsAppChat, { Agent, DEFAULT_AGENTS } from "./components/WhatsAppChat";
 import { CredentialsStatus, CategoryData, Match } from "./types";
 import { auth, db } from "./firebase";
 import { 
@@ -211,6 +211,11 @@ export default function App() {
   });
   const [showGreetingBubble, setShowGreetingBubble] = useState(true);
 
+  // Support agents settings states
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
+  const agentFileInputRef = useRef<HTMLInputElement>(null);
+
   // Proof and User VIP Management States
   const [userProofs, setUserProofs] = useState<any[]>([]);
   const [allProofs, setAllProofs] = useState<any[]>([]);
@@ -222,6 +227,7 @@ export default function App() {
   const [viewingScreenshot, setViewingScreenshot] = useState<string | null>(null);
   const [userSearchQuery, setUserSearchQuery] = useState<string>("");
   const [adminSubTab, setAdminSubTab] = useState<"pending" | "users">("pending");
+  const [settingSubTab, setSettingSubTab] = useState<"system" | "chat">("chat");
 
   // Firestore categories state
   const [freeCategories, setFreeCategories] = useState<CategoryData[]>(() => freeTips.map(sortCategoryTickets));
@@ -485,6 +491,34 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // 1c. Real-time subscription for support agents
+  useEffect(() => {
+    if (!currentUser || !isMainAdmin) return;
+    const unsubscribe = onSnapshot(collection(db, "agents"), (snapshot) => {
+      if (!snapshot.empty) {
+        const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Agent));
+        const sorted = ["olivia", "sophia", "alexander", "william"].map(id => {
+          const found = loaded.find(a => a.id === id);
+          const orig = DEFAULT_AGENTS.find(a => a.id === id)!;
+          return found || orig;
+        });
+        setAgents(sorted);
+      } else {
+        DEFAULT_AGENTS.forEach(async (agent) => {
+          try {
+            await setDoc(doc(db, "agents", agent.id), agent);
+          } catch (e) {
+            console.error("Error seeding agent in App:", e);
+          }
+        });
+        setAgents(DEFAULT_AGENTS);
+      }
+    }, (error) => {
+      console.error("Error listening to agents in App:", error);
+    });
+    return () => unsubscribe();
+  }, [db, currentUser, isMainAdmin]);
 
   // 2. Monitor Categories & Matches in Firestore
   useEffect(() => {
@@ -1003,8 +1037,6 @@ export default function App() {
     
     // Determine target category based on user selection or original
     let finalCategoryId = editMatchCategoryId || originalCategoryId;
-    
-    // Automatically redirect category if status changes between today & results
     if (finalCategoryId.endsWith("_today") && (matchStatus === "win" || matchStatus === "lose")) {
       finalCategoryId = finalCategoryId.replace("_today", "_results");
     } else if (finalCategoryId.endsWith("_results") && matchStatus === "pending") {
@@ -1169,7 +1201,7 @@ export default function App() {
 
     const category = [...freeCategories, ...vipCategories].find(c => c.id === finalCatId);
     if (!category) {
-      alert("Selected category not found!");
+      alert("Target category not found! Please seed the database first.");
       return;
     }
 
@@ -1258,7 +1290,14 @@ export default function App() {
       if (userSnap.exists()) {
         const userData = userSnap.data();
         const currentSubs = userData.subscriptions || {};
-        const updatedSubs = { ...currentSubs, [proof.categoryId]: true };
+        const baseId = proof.categoryId.replace("_today", "").replace("_results", "");
+        const updatedSubs = { 
+          ...currentSubs, 
+          [proof.categoryId]: true,
+          [baseId]: true,
+          [`${baseId}_today`]: true,
+          [`${baseId}_results`]: true
+        };
         await setDoc(userRef, { ...userData, subscriptions: updatedSubs }, { merge: true });
       }
       await setDoc(doc(db, "proofs", proof.id), { status: "approved" }, { merge: true });
@@ -1283,8 +1322,15 @@ export default function App() {
     try {
       const userRef = doc(db, "users", targetUser.uid);
       const currentSubs = targetUser.subscriptions || {};
-      const isSubscribed = currentSubs[categoryId] === true;
-      const updatedSubs = { ...currentSubs, [categoryId]: !isSubscribed };
+      const baseId = categoryId.replace("_today", "").replace("_results", "");
+      const isSubscribed = currentSubs[baseId] === true;
+      const nextVal = !isSubscribed;
+      const updatedSubs = { 
+        ...currentSubs, 
+        [baseId]: nextVal,
+        [`${baseId}_today`]: nextVal,
+        [`${baseId}_results`]: nextVal
+      };
       await setDoc(userRef, { ...targetUser, subscriptions: updatedSubs }, { merge: true });
     } catch (err: any) {
       console.error("Error toggling user subscription:", err);
@@ -1466,6 +1512,44 @@ export default function App() {
     } finally {
       setIsSavingCreds(false);
     }
+  };
+
+  // Image compression for agent avatars
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new window.Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 320; // 320px for high density avatars
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL("image/jpeg", 0.75);
+            resolve(compressed);
+          } else {
+            resolve(reader.result as string);
+          }
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   };
 
   // Delete credentials from Client Storage
@@ -1868,9 +1952,25 @@ export default function App() {
     }
     
     if (matchCount !== undefined) {
-      const badgeBg = isResults 
-        ? "bg-emerald-500 text-white border-emerald-400 shadow-[0_1.5px_8px_rgba(16,185,129,0.6)]" 
-        : "bg-[#E2FF00] text-black border-black/25 shadow-[0_1.5px_4px_rgba(0,0,0,0.5)]";
+      if (isResults) {
+        return (
+          <div className="relative">
+            {element}
+            <span 
+              className="absolute -top-3 -right-5 text-[7.5px] font-black px-1.5 py-0.5 flex items-center justify-center rounded-lg border border-yellow-400/80 z-10 select-none animate-christmas-badge font-sans bg-gradient-to-r from-red-600 via-rose-600 to-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.8)] tracking-wider font-extrabold"
+              style={{
+                textShadow: "0 1px 2px rgba(0,0,0,0.8)"
+              }}
+            >
+              <span className="animate-christmas-text flex items-center gap-0.5 text-[7px]">
+                RESULTS 🎄
+              </span>
+            </span>
+          </div>
+        );
+      }
+
+      const badgeBg = "bg-[#E2FF00] text-black border-black/25 shadow-[0_1.5px_4px_rgba(0,0,0,0.5)]";
       return (
         <div className="relative">
           {element}
@@ -2055,7 +2155,11 @@ export default function App() {
     );
   }
 
-  const isSubscribedToActiveCategory = isMainAdmin || (userProfile?.subscriptions?.[activeCategory?.id] === true);
+  const isSubscribedToActiveCategory = isMainAdmin || 
+    (activeCategory?.id ? (
+      userProfile?.subscriptions?.[activeCategory.id] === true ||
+      userProfile?.subscriptions?.[activeCategory.id.replace("_today", "").replace("_results", "")] === true
+    ) : false);
 
   return (
     <div 
@@ -2112,6 +2216,44 @@ export default function App() {
         }
         .animate-results-text {
           animation: textShimmer 1.5s infinite ease-in-out;
+        }
+
+        @keyframes christmasGlow {
+          0% {
+            box-shadow: 0 0 4px rgba(239, 68, 68, 0.5), 0 0 2px rgba(245, 158, 11, 0.3);
+            filter: brightness(1);
+          }
+          50% {
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.95), 0 0 8px rgba(245, 158, 11, 0.7);
+            filter: brightness(1.2);
+          }
+          100% {
+            box-shadow: 0 0 4px rgba(239, 68, 68, 0.5), 0 0 2px rgba(245, 158, 11, 0.3);
+            filter: brightness(1);
+          }
+        }
+        @keyframes ribbonSway {
+          0%, 100% {
+            transform: rotate(-3deg) scale(1);
+          }
+          50% {
+            transform: rotate(3deg) scale(1.04);
+          }
+        }
+        @keyframes snowFlicker {
+          0%, 100% {
+            opacity: 0.9;
+          }
+          50% {
+            opacity: 1;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.9), 0 0 6px rgba(255, 255, 255, 0.8), 0 0 10px rgba(251, 191, 36, 0.7);
+          }
+        }
+        .animate-christmas-badge {
+          animation: christmasGlow 2s infinite ease-in-out, ribbonSway 3s infinite ease-in-out;
+        }
+        .animate-christmas-text {
+          animation: snowFlicker 1.2s infinite ease-in-out;
         }
 
         /* Hide Scrollbar globally to remove any right-edge scroll tracks */
@@ -2558,6 +2700,27 @@ export default function App() {
           -ms-overflow-style: none;
           scrollbar-width: none;
         }
+
+        /* Admin Client Chats Sidebar visible scrollbar */
+        .admin-sidebar-scroll::-webkit-scrollbar {
+          width: 5px;
+          display: block;
+        }
+        .admin-sidebar-scroll::-webkit-scrollbar-track {
+          background: #f0f2f5;
+        }
+        .admin-sidebar-scroll::-webkit-scrollbar-thumb {
+          background-color: #cbd5e1;
+          border-radius: 4px;
+        }
+        .admin-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+          background-color: #94a3b8;
+        }
+        .admin-sidebar-scroll {
+          -ms-overflow-style: auto;
+          scrollbar-width: thin;
+          scrollbar-color: #cbd5e1 #f0f2f5;
+        }
       `}</style>
       
       {/* Premium FIXED Top Header */}
@@ -2920,123 +3083,118 @@ export default function App() {
                   exit="hidden"
                   className="w-full flex flex-col gap-6"
                 >
-                  {/* TODAY & ONWARD SECTION */}
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex items-center gap-1.5 px-1 select-none">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] animate-pulse"></span>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">
-                        Available Matches
-                      </span>
-                      <span className="text-[7px] font-black uppercase tracking-widest text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/25 px-1.5 py-0.5 rounded ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
-                        Active Fixtures
-                      </span>
+                  {/* UNIFIED CATEGORIES GRID SECTION */}
+                  <div className="flex flex-col gap-6">
+                    {/* TODAY & ONWARD SECTION */}
+                    <div className="flex flex-col gap-2.5">
+                      <div className="flex items-center gap-1.5 px-1 select-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#E2FF00] animate-pulse"></span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">
+                          Today & Onward Selections
+                        </span>
+                        <span className="text-[7px] font-black uppercase tracking-widest text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/25 px-1.5 py-0.5 rounded ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.3)] font-mono">
+                          Today's Tips
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        {(toggleMode === "free" ? freeCategories : vipCategories)
+                          .filter((cat) => cat.id.endsWith("_today"))
+                          .map((cat) => {
+                            const isActive = openedCategoryId === cat.id;
+                            return (
+                              <motion.button
+                                key={cat.id}
+                                variants={{
+                                  hidden: { opacity: 0, scale: 0.88, y: 12 },
+                                  show: { opacity: 1, scale: 1, y: 0 }
+                                }}
+                                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                                onClick={() => {
+                                  if (toggleMode === "free") {
+                                    setSelectedFreeCat(cat.id);
+                                  } else {
+                                    setSelectedVipCat(cat.id);
+                                  }
+                                  setOpenedCategoryId(cat.id);
+                                }}
+                                className={`aspect-square rounded-2xl p-2.5 border flex flex-col items-center justify-center text-center gap-2 transition-all duration-300 transform active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
+                                  isActive 
+                                    ? "border-[#E2FF00] bg-[#540202] shadow-[0_0_20px_rgba(226,255,0,0.35)] scale-[1.03]" 
+                                    : "border-white/15 bg-[#540202] hover:bg-[#870404] hover:border-white/30"
+                                }`}
+                              >
+                                {isActive && (
+                                  <div className="absolute inset-0 bg-gradient-to-tr from-[#E2FF00]/5 to-transparent pointer-events-none" />
+                                )}
+                                
+                                {renderCategoryIcon(cat.iconName, isActive, getTodayMatchesCount(cat), false)}
+                                
+                                <span className={`text-[10px] font-bold leading-tight uppercase tracking-wide transition-colors duration-300 font-sans ${
+                                  isActive ? "text-[#E2FF00]" : "text-slate-300 group-hover:text-white"
+                                }`}>
+                                  {cat.title}
+                                </span>
+                              </motion.button>
+                            );
+                          })}
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-3">
-                      {(toggleMode === "free" ? freeCategories : vipCategories)
-                        .filter((cat) => cat.id.includes("today"))
-                        .map((cat) => {
-                          const isActive = openedCategoryId === cat.id;
-                          return (
-                            <motion.button
-                              key={cat.id}
-                              variants={{
-                                hidden: { opacity: 0, scale: 0.88, y: 12 },
-                                show: { opacity: 1, scale: 1, y: 0 }
-                              }}
-                              transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                              onClick={() => {
-                                if (toggleMode === "free") {
-                                  setSelectedFreeCat(cat.id);
-                                } else {
-                                  setSelectedVipCat(cat.id);
-                                }
-                                setOpenedCategoryId(cat.id);
-                              }}
-                              className={`aspect-square rounded-2xl p-2.5 border flex flex-col items-center justify-center text-center gap-2.5 transition-all duration-300 transform active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
-                                isActive 
-                                  ? "border-[#E2FF00] bg-[#540202] shadow-[0_0_20px_rgba(226,255,0,0.35)] scale-[1.03]" 
-                                  : "border-white/15 bg-[#540202] hover:bg-[#870404] hover:border-white/30"
-                              }`}
-                            >
-                              <span className="absolute top-1 right-1 text-[6px] font-black uppercase tracking-widest text-[#E2FF00]/90 bg-[#E2FF00]/10 border border-[#E2FF00]/20 px-1 py-0.2 rounded-sm">
-                                Available
-                              </span>
+                    {/* YESTERDAY & BEFORE RESULTS SECTION */}
+                    <div className="flex flex-col gap-2.5 border-t border-white/5 pt-4">
+                      <div className="flex items-center gap-1.5 px-1 select-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">
+                          Yesterday & Before Results
+                        </span>
+                        <span className="text-[7px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.3)] font-mono">
+                          Win & Lose
+                        </span>
+                      </div>
 
-                              {isActive && (
-                                <div className="absolute inset-0 bg-gradient-to-tr from-[#E2FF00]/5 to-transparent pointer-events-none" />
-                              )}
-                              
-                              {renderCategoryIcon(cat.iconName, isActive, getTodayMatchesCount(cat))}
-                              
-                              <span className={`text-[10px] font-bold leading-tight uppercase tracking-wide transition-colors duration-300 font-sans ${
-                                isActive ? "text-[#E2FF00]" : "text-slate-300 group-hover:text-white"
-                              }`}>
-                                {cat.title.replace(" Today", "")}
-                              </span>
-                            </motion.button>
-                          );
-                        })}
-                    </div>
-                  </div>
-
-                  {/* YESTERDAY & BEFORE RESULTS SECTION */}
-                  <div className="flex flex-col gap-2.5">
-                    <div className="flex items-center gap-1.5 px-1 select-none">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                        Match Results
-                      </span>
-                      <span className="text-[7px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded ml-auto shadow-[0_1px_2px_rgba(0,0,0,0.3)]">
-                        Finished
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                      {(toggleMode === "free" ? freeCategories : vipCategories)
-                        .filter((cat) => cat.id.includes("results"))
-                        .map((cat) => {
-                          const isActive = openedCategoryId === cat.id;
-                          return (
-                            <motion.button
-                              key={cat.id}
-                              variants={{
-                                hidden: { opacity: 0, scale: 0.88, y: 12 },
-                                show: { opacity: 1, scale: 1, y: 0 }
-                              }}
-                              transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                              onClick={() => {
-                                if (toggleMode === "free") {
-                                  setSelectedFreeCat(cat.id);
-                                } else {
-                                  setSelectedVipCat(cat.id);
-                                }
-                                setOpenedCategoryId(cat.id);
-                              }}
-                              className={`aspect-square rounded-2xl p-2.5 border flex flex-col items-center justify-center text-center gap-2.5 transition-all duration-300 transform active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
-                                isActive 
-                                  ? "border-emerald-500 bg-[#540202] shadow-[0_0_20px_rgba(16,185,129,0.35)] scale-[1.03]" 
-                                  : "border-white/15 bg-[#540202] hover:bg-[#870404] hover:border-white/30"
-                              }`}
-                            >
-                              <span className="absolute top-1.5 right-1.5 text-[6px] font-black uppercase tracking-widest text-white bg-gradient-to-r from-emerald-500 to-teal-500 px-1.5 py-0.5 rounded-full border border-emerald-400/30 shadow-[0_2px_8px_rgba(16,185,129,0.5)] animate-results-badge z-10">
-                                <span className="animate-results-text">RESULTS</span>
-                              </span>
-
-                              {isActive && (
-                                <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/5 to-transparent pointer-events-none" />
-                              )}
-                              
-                              {renderCategoryIcon(cat.iconName, isActive)}
-                              
-                              <span className={`text-[10px] font-bold leading-tight uppercase tracking-wide transition-colors duration-300 font-sans ${
-                                isActive ? "text-emerald-400" : "text-slate-400 group-hover:text-white"
-                              }`}>
-                                {cat.title.replace(" Results", "")}
-                              </span>
-                            </motion.button>
-                          );
-                        })}
+                      <div className="grid grid-cols-3 gap-3">
+                        {(toggleMode === "free" ? freeCategories : vipCategories)
+                          .filter((cat) => cat.id.endsWith("_results"))
+                          .map((cat) => {
+                            const isActive = openedCategoryId === cat.id;
+                            return (
+                              <motion.button
+                                key={cat.id}
+                                variants={{
+                                  hidden: { opacity: 0, scale: 0.88, y: 12 },
+                                  show: { opacity: 1, scale: 1, y: 0 }
+                                }}
+                                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                                onClick={() => {
+                                  if (toggleMode === "free") {
+                                    setSelectedFreeCat(cat.id);
+                                  } else {
+                                    setSelectedVipCat(cat.id);
+                                  }
+                                  setOpenedCategoryId(cat.id);
+                                }}
+                                className={`aspect-square rounded-2xl p-2.5 border flex flex-col items-center justify-center text-center gap-2 transition-all duration-300 transform active:scale-95 cursor-pointer relative overflow-hidden group select-none ${
+                                  isActive 
+                                    ? "border-[#E2FF00] bg-[#540202] shadow-[0_0_20px_rgba(226,255,0,0.35)] scale-[1.03]" 
+                                    : "border-white/15 bg-[#540202] hover:bg-[#870404] hover:border-white/30"
+                                }`}
+                              >
+                                {isActive && (
+                                  <div className="absolute inset-0 bg-gradient-to-tr from-[#E2FF00]/5 to-transparent pointer-events-none" />
+                                )}
+                                
+                                {renderCategoryIcon(cat.iconName, isActive, getResultsMatchesCount(cat), true)}
+                                
+                                <span className={`text-[10px] font-bold leading-tight uppercase tracking-wide transition-colors duration-300 font-sans ${
+                                  isActive ? "text-[#E2FF00]" : "text-slate-300 group-hover:text-white"
+                                }`}>
+                                  {cat.title}
+                                </span>
+                              </motion.button>
+                            );
+                          })}
+                      </div>
                     </div>
                   </div>
 
@@ -3048,40 +3206,465 @@ export default function App() {
 
           </div>
         ) : activeTab === "setting" ? (
-          /* SETTINGS VIEW */
+          /* SETTINGS VIEW WITH SUB-TABS */
           <div className="w-full bg-[#121921]/95 border border-white/5 rounded-2xl p-5 shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-slate-100 flex items-center gap-2 border-b border-white/5 pb-3">
-              <Key className="w-5 h-5 text-[#E2FF00]" />
-              Firebase Account Key
-            </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 border-b border-white/5 pb-3 justify-between">
+              <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-[#E2FF00]" />
+                Admin Controls & App Settings
+              </h3>
+              
+              {/* Sub-tabs Selection */}
+              <div className="flex bg-[#070b0f] p-1 rounded-lg border border-white/5 gap-1 select-none self-start">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingSubTab("chat");
+                    setEditingAgent(null);
+                  }}
+                  className={`px-3 py-1 text-[10px] font-black uppercase rounded-md transition-all cursor-pointer ${
+                    settingSubTab === "chat"
+                      ? "bg-[#E2FF00] text-black shadow-md font-black"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Chat Settings
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingSubTab("system");
+                    setEditingAgent(null);
+                  }}
+                  className={`px-3 py-1 text-[10px] font-black uppercase rounded-md transition-all cursor-pointer ${
+                    settingSubTab === "system"
+                      ? "bg-[#E2FF00] text-black shadow-md font-black"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  System & Keys
+                </button>
+              </div>
+            </div>
 
-            {credentialsStatus?.configured ? (
+            {settingSubTab === "chat" ? (
+              /* CHAT & AGENTS CONFIGURATION */
               <div className="space-y-4">
-                <div className="bg-[#070b0f] border border-white/5 p-4 rounded-xl text-xs space-y-2.5">
-                  <div className="flex justify-between items-center pb-2 border-b border-white/5">
-                    <span className="text-slate-400 font-mono">Status:</span>
-                    <span className="text-emerald-400 font-bold flex items-center gap-1 bg-emerald-950/20 px-2.5 py-1 rounded-full border border-emerald-500/20">
-                      <CheckCircle className="w-3.5 h-3.5" /> Configured
+                {/* 1. Admin Status & Basic Settings */}
+                <div className="bg-[#070b0f] border border-white/5 p-4 rounded-xl space-y-3.5 text-xs">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                    <span className="font-bold text-slate-200 flex items-center gap-1.5 font-sans">
+                      <span className={`w-2 h-2 rounded-full ${adminSettings.isOnline ? 'bg-emerald-400 animate-pulse shadow-[0_0_8px_#10b981]' : 'bg-slate-500'}`} />
+                      Set Admin Status
                     </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const nextOnline = !adminSettings.isOnline;
+                        try {
+                          await setDoc(doc(db, "admin_settings", "global"), {
+                            ...adminSettings,
+                            isOnline: nextOnline
+                          });
+                          setAdminSettings(prev => ({ ...prev, isOnline: nextOnline }));
+                        } catch (err) {
+                          console.error("Error updating online status:", err);
+                        }
+                      }}
+                      className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
+                        adminSettings.isOnline 
+                          ? "bg-[#E2FF00] text-black hover:opacity-90 shadow-sm" 
+                          : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                      }`}
+                    >
+                      {adminSettings.isOnline ? "Online" : "Offline"}
+                    </button>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400 font-mono">Project ID:</span>
-                    <span className="font-semibold font-mono text-slate-200">{credentialsStatus.projectId}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400 font-mono">Client Email:</span>
-                    <span className="font-mono text-slate-300 truncate max-w-[180px]" title={credentialsStatus.clientEmail}>
-                      {credentialsStatus.clientEmail}
-                    </span>
+
+                  {/* Pop-up greeting */}
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] text-slate-400 font-black uppercase block tracking-wider">
+                      Floating Pop-up Greeting
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={adminSettings.customGreeting}
+                        onChange={(e) => {
+                          const text = e.target.value;
+                          setAdminSettings(prev => ({ ...prev, customGreeting: text }));
+                        }}
+                        placeholder="e.g. Hi👋, feel free to ask any questions!"
+                        className="flex-1 bg-[#121921] border border-white/10 px-3 py-2 rounded-xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-[#E2FF00] transition-all font-sans"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await setDoc(doc(db, "admin_settings", "global"), {
+                              ...adminSettings,
+                            });
+                            alert("Greeting text saved successfully!");
+                          } catch (err) {
+                            console.error("Error saving custom greeting:", err);
+                          }
+                        }}
+                        className="bg-[#E2FF00] hover:bg-[#c2db00] text-black px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition-all active:scale-95 flex items-center justify-center font-sans"
+                      >
+                        Save
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="border-t border-white/5 pt-4 flex flex-col gap-3">
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    To overwrite the current key, paste a new Google service account JSON credential block below.
-                  </p>
+                {/* 2. Show/Hide Settings & Default Agent */}
+                <div className="bg-[#070b0f] border border-white/5 p-4 rounded-xl space-y-3 text-xs">
+                  <div className="flex items-center justify-between pb-2.5">
+                    <span className="font-bold text-slate-200">
+                      Show Agents Bar
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const nextShow = adminSettings.showAgentsOnAdmin !== false ? false : true;
+                        try {
+                          await setDoc(doc(db, "admin_settings", "global"), {
+                            ...adminSettings,
+                            showAgentsOnAdmin: nextShow
+                          });
+                          setAdminSettings(prev => ({ ...prev, showAgentsOnAdmin: nextShow }));
+                        } catch (err) {
+                          console.error("Error updating show agents status:", err);
+                        }
+                      }}
+                      className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
+                        adminSettings.showAgentsOnAdmin !== false
+                          ? "bg-[#E2FF00] text-black hover:opacity-90" 
+                          : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                      }`}
+                    >
+                      {adminSettings.showAgentsOnAdmin !== false ? "Visible" : "Hidden"}
+                    </button>
+                  </div>
 
-                  <form onSubmit={handleSaveCredentials} className="space-y-3.5">
+                  <div className="flex items-center justify-between border-t border-white/5 pt-2.5">
+                    <span className="font-bold text-slate-200">
+                      Agents on Chat Box
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const nextShow = adminSettings.showAgentsInChatBox !== false ? false : true;
+                        try {
+                          await setDoc(doc(db, "admin_settings", "global"), {
+                            ...adminSettings,
+                            showAgentsInChatBox: nextShow
+                          });
+                          setAdminSettings(prev => ({ ...prev, showAgentsInChatBox: nextShow }));
+                        } catch (err) {
+                          console.error("Error updating show agents in chat status:", err);
+                        }
+                      }}
+                      className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
+                        adminSettings.showAgentsInChatBox !== false
+                          ? "bg-[#E2FF00] text-black hover:opacity-90" 
+                          : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+                      }`}
+                    >
+                      {adminSettings.showAgentsInChatBox !== false ? "Visible" : "Hidden"}
+                    </button>
+                  </div>
+
+                  {/* Default Agent select */}
+                  <div className="space-y-1.5 border-t border-white/5 pt-2.5">
+                    <label className="text-[9px] text-slate-400 font-black uppercase block tracking-wider">
+                      Default Reply Agent
+                    </label>
+                    <select
+                      value={adminSettings.defaultAgentId || "sophia"}
+                      onChange={async (e) => {
+                        const nextAgentId = e.target.value;
+                        try {
+                          await setDoc(doc(db, "admin_settings", "global"), {
+                            ...adminSettings,
+                            defaultAgentId: nextAgentId
+                          });
+                          setAdminSettings(prev => ({ ...prev, defaultAgentId: nextAgentId }));
+                        } catch (err) {
+                          console.error("Error updating default agent:", err);
+                        }
+                      }}
+                      className="w-full bg-[#121921] border border-white/10 px-3 py-2 rounded-xl text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00] focus:bg-[#121921] transition-all font-sans cursor-pointer"
+                    >
+                      {(agents.length > 0 ? agents : DEFAULT_AGENTS).map((agent) => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.name} ({agent.role})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* 3. Support Agent Identity System Management */}
+                <div className="bg-[#070b0f] border border-white/5 p-4 rounded-xl space-y-4">
+                  <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
+                    <span className="text-xs font-black uppercase tracking-wider text-white">
+                      Support Agent Identity System
+                    </span>
+                  </div>
+
+                  {editingAgent ? (
+                    /* Edit Agent form inside Settings page */
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        try {
+                          await setDoc(doc(db, "agents", editingAgent.id), editingAgent);
+                          setEditingAgent(null);
+                        } catch (err) {
+                          console.error("Error updating agent:", err);
+                        }
+                      }}
+                      className="space-y-3.5 text-left border border-white/5 bg-white/5 p-3.5 rounded-xl text-xs"
+                    >
+                      <div className="flex items-center gap-3 bg-black/40 p-2.5 rounded-lg border border-white/5">
+                        <div className="relative group cursor-pointer" onClick={() => agentFileInputRef.current?.click()}>
+                          <img
+                            src={editingAgent.imageUrl || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150"}
+                            alt={editingAgent.name}
+                            className="w-12 h-12 rounded-full object-cover border-2 border-[#E2FF00] group-hover:opacity-70 transition-opacity"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 rounded-full transition-opacity text-[8px] text-white font-black uppercase text-center leading-none">
+                            Upload
+                          </div>
+                        </div>
+                        <div>
+                          <p className="text-xs font-black text-white uppercase">{editingAgent.name || "Agent"}</p>
+                          <p className="text-[9px] text-slate-400">Click photo to upload custom avatar image.</p>
+                        </div>
+                        
+                        <input
+                          type="file"
+                          ref={agentFileInputRef}
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              try {
+                                const base64 = await compressImage(file);
+                                setEditingAgent(prev => prev ? { ...prev, imageUrl: base64 } : null);
+                              } catch (err) {
+                                console.error("Error compressing agent image:", err);
+                              }
+                            }
+                          }}
+                          accept="image/*"
+                          className="hidden"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[8px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                            Agent Name
+                          </label>
+                          <input
+                            type="text"
+                            value={editingAgent.name}
+                            onChange={(e) => setEditingAgent(prev => prev ? { ...prev, name: e.target.value } : null)}
+                            required
+                            className="w-full bg-[#121921] border border-white/10 px-2.5 py-1.5 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[8px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                            Role / Title
+                          </label>
+                          <input
+                            type="text"
+                            value={editingAgent.role}
+                            onChange={(e) => setEditingAgent(prev => prev ? { ...prev, role: e.target.value } : null)}
+                            required
+                            className="w-full bg-[#121921] border border-white/10 px-2.5 py-1.5 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                          Availability Status
+                        </label>
+                        <select
+                          value={editingAgent.status}
+                          onChange={(e) => setEditingAgent(prev => prev ? { ...prev, status: e.target.value as any } : null)}
+                          className="w-full bg-[#121921] border border-white/10 px-2.5 py-1.5 rounded-lg text-xs font-bold text-white focus:outline-none focus:border-[#E2FF00] cursor-pointer"
+                        >
+                          <option value="available">Available (Online)</option>
+                          <option value="busy">Busy (In Call)</option>
+                          <option value="offline">Offline (Away)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-[8px] font-black uppercase text-slate-400 mb-1 tracking-wider">
+                          Personality & Deployment (Internal Info)
+                        </label>
+                        <p className="bg-[#121921]/40 border border-white/5 px-2.5 py-2 rounded-lg text-[10px] leading-relaxed text-slate-300 italic">
+                          {editingAgent.personality || "No internal traits assigned."}
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditingAgent(null)}
+                          className="flex-1 bg-white/5 hover:bg-white/10 text-slate-300 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="flex-1 bg-[#E2FF00] hover:bg-[#c2db00] text-black py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors cursor-pointer"
+                        >
+                          Save Changes
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    /* Grid list of support agents */
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {(agents.length > 0 ? agents : DEFAULT_AGENTS).map((agent) => (
+                        <div
+                          key={agent.id}
+                          className="border border-white/5 bg-white/5 p-2.5 rounded-xl flex items-center justify-between text-xs transition-all hover:border-white/10"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="relative shrink-0">
+                              <img
+                                src={agent.imageUrl}
+                                alt={agent.name}
+                                className="w-9 h-9 rounded-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                              <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-[#0b1017] ${
+                                agent.status === "available"
+                                  ? "bg-emerald-500 animate-pulse"
+                                  : agent.status === "busy"
+                                  ? "bg-amber-500"
+                                  : "bg-slate-500"
+                              }`} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-sans font-black uppercase text-[10px] text-white truncate leading-tight">
+                                {agent.name}
+                              </p>
+                              <p className="text-[8px] text-slate-400 truncate leading-none mt-0.5">
+                                {agent.role}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => setEditingAgent(agent)}
+                            className="bg-white/5 hover:bg-white/10 hover:text-white text-slate-300 px-2 py-1 rounded text-[8px] font-black uppercase tracking-wide cursor-pointer transition-colors"
+                          >
+                            Edit
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* SYSTEM & KEYS CONFIGURATION */
+              <div className="space-y-4">
+                <h3 className="text-base font-bold text-slate-100 flex items-center gap-2 border-b border-white/5 pb-2">
+                  <Key className="w-5 h-5 text-[#E2FF00]" />
+                  Firebase Account Key
+                </h3>
+
+                {credentialsStatus?.configured ? (
+                  <div className="space-y-4">
+                    <div className="bg-[#070b0f] border border-white/5 p-4 rounded-xl text-xs space-y-2.5">
+                      <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                        <span className="text-slate-400 font-mono">Status:</span>
+                        <span className="text-emerald-400 font-bold flex items-center gap-1 bg-emerald-950/20 px-2.5 py-1 rounded-full border border-emerald-500/20">
+                          <CheckCircle className="w-3.5 h-3.5" /> Configured
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-mono">Project ID:</span>
+                        <span className="font-semibold font-mono text-slate-200">{credentialsStatus.projectId}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-400 font-mono">Client Email:</span>
+                        <span className="font-mono text-slate-300 truncate max-w-[180px]" title={credentialsStatus.clientEmail}>
+                          {credentialsStatus.clientEmail}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-white/5 pt-4 flex flex-col gap-3">
+                      <p className="text-xs text-slate-400 leading-relaxed">
+                        To overwrite the current key, paste a new Google service account JSON credential block below.
+                      </p>
+
+                      <form onSubmit={handleSaveCredentials} className="space-y-3.5">
+                        <div className="relative">
+                          <textarea
+                            value={credentialsJson}
+                            onChange={(e) => setCredentialsJson(e.target.value)}
+                            placeholder='{"type": "service_account", "project_id": "...", ...}'
+                            rows={6}
+                            className="w-full bg-[#070b0f] border border-white/10 rounded-xl p-3.5 font-mono text-xs text-slate-200 focus:outline-none focus:border-[#E2FF00] focus:ring-1 focus:ring-[#E2FF00] transition-all"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowKeyText(!showKeyText)}
+                            className="absolute bottom-3 right-3 p-1.5 text-slate-500 hover:text-slate-300 transition-colors"
+                          >
+                            {showKeyText ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
+                          </button>
+                        </div>
+
+                        {credError && (
+                          <p className="text-xs text-rose-400 bg-rose-950/10 border border-rose-900/30 p-3 rounded-xl flex items-center gap-2">
+                            <XCircle className="w-4.5 h-4.5 shrink-0 text-rose-500" />
+                            {credError}
+                          </p>
+                        )}
+
+                        <div className="flex justify-between items-center gap-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={handleDeleteCredentials}
+                            className="bg-rose-950/20 hover:bg-rose-900/30 text-rose-400 px-4 py-2 rounded-xl text-xs font-bold border border-rose-900/20 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Remove Key
+                          </button>
+
+                          <button
+                            type="submit"
+                            disabled={isSavingCreds || !credentialsJson.trim()}
+                            className="bg-[#E2FF00] hover:bg-[#c2db00] disabled:bg-slate-800 disabled:text-slate-500 text-black font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                          >
+                            {isSavingCreds ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                            Update Credentials
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSaveCredentials} className="space-y-4">
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Paste the content of your Firebase service account JSON key file (<code className="bg-[#070b0f] text-[#E2FF00] px-1.5 py-0.5 rounded font-mono text-[11px] border border-white/5">service-account.json</code>) to activate sending.
+                    </p>
+                    
                     <div className="relative">
                       <textarea
                         value={credentialsJson}
@@ -3106,89 +3689,39 @@ export default function App() {
                       </p>
                     )}
 
-                    <div className="flex justify-between items-center gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={handleDeleteCredentials}
-                        className="bg-rose-950/20 hover:bg-rose-900/30 text-rose-400 px-4 py-2 rounded-xl text-xs font-bold border border-rose-900/20 transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Remove Key
-                      </button>
-
+                    <div className="flex justify-end pt-1">
                       <button
                         type="submit"
                         disabled={isSavingCreds || !credentialsJson.trim()}
                         className="bg-[#E2FF00] hover:bg-[#c2db00] disabled:bg-slate-800 disabled:text-slate-500 text-black font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
                       >
                         {isSavingCreds ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-                        Update Credentials
+                        Save Credentials
                       </button>
                     </div>
                   </form>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleSaveCredentials} className="space-y-4">
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Paste the content of your Firebase service account JSON key file (<code className="bg-[#070b0f] text-[#E2FF00] px-1.5 py-0.5 rounded font-mono text-[11px] border border-white/5">service-account.json</code>) to activate sending.
-                </p>
-                
-                <div className="relative">
-                  <textarea
-                    value={credentialsJson}
-                    onChange={(e) => setCredentialsJson(e.target.value)}
-                    placeholder='{"type": "service_account", "project_id": "...", ...}'
-                    rows={6}
-                    className="w-full bg-[#070b0f] border border-white/10 rounded-xl p-3.5 font-mono text-xs text-slate-200 focus:outline-none focus:border-[#E2FF00] focus:ring-1 focus:ring-[#E2FF00] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKeyText(!showKeyText)}
-                    className="absolute bottom-3 right-3 p-1.5 text-slate-500 hover:text-slate-300 transition-colors"
-                  >
-                    {showKeyText ? <EyeOff className="w-4.5 h-4.5" /> : <Eye className="w-4.5 h-4.5" />}
-                  </button>
-                </div>
-
-                {credError && (
-                  <p className="text-xs text-rose-400 bg-rose-950/10 border border-rose-900/30 p-3 rounded-xl flex items-center gap-2">
-                    <XCircle className="w-4.5 h-4.5 shrink-0 text-rose-500" />
-                    {credError}
-                  </p>
                 )}
 
-                <div className="flex justify-end pt-1">
+                {/* Seed Database Option */}
+                <div className="bg-[#070b0f] border border-[#E2FF00]/10 p-4 rounded-xl text-xs space-y-3 mt-4">
+                  <h4 className="text-xs font-bold text-[#E2FF00] flex items-center gap-1.5 uppercase tracking-wider">
+                    <SparklesIcon className="w-4 h-4" />
+                    Seed Matches Collection
+                  </h4>
+                  <p className="text-slate-400 leading-relaxed text-[11px]">
+                    If your Firestore database is brand new, seed the initial set of betting tips and categories directly. This writes free and VIP category schemas to your <code>categories</code> collection.
+                  </p>
                   <button
-                    type="submit"
-                    disabled={isSavingCreds || !credentialsJson.trim()}
-                    className="bg-[#E2FF00] hover:bg-[#c2db00] disabled:bg-slate-800 disabled:text-slate-500 text-black font-extrabold text-xs px-5 py-2.5 rounded-xl transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                    type="button"
+                    onClick={handleSeedDatabase}
+                    disabled={isSeeding}
+                    className="w-full bg-[#E2FF00] hover:scale-[1.01] active:scale-95 text-black py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
                   >
-                    {isSavingCreds ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
-                    Save Credentials
+                    {isSeeding ? "Seeding Database..." : "Seed Initial Matches to Firestore"}
                   </button>
                 </div>
-              </form>
+              </div>
             )}
-
-            {/* Seed Database Option */}
-            <div className="bg-[#070b0f] border border-[#E2FF00]/10 p-4 rounded-xl text-xs space-y-3 mt-4">
-              <h4 className="text-xs font-bold text-[#E2FF00] flex items-center gap-1.5 uppercase tracking-wider">
-                <SparklesIcon className="w-4 h-4" />
-                Seed Matches Collection
-              </h4>
-              <p className="text-slate-400 leading-relaxed text-[11px]">
-                If your Firestore database is brand new, seed the initial set of betting tips and categories directly. This writes free and VIP category schemas to your <code>categories</code> collection.
-              </p>
-              <button
-                type="button"
-                onClick={handleSeedDatabase}
-                disabled={isSeeding}
-                className="w-full bg-[#E2FF00] hover:scale-[1.01] active:scale-95 text-black py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                {isSeeding ? "Seeding Database..." : "Seed Initial Matches to Firestore"}
-              </button>
-            </div>
           </div>
         ) : activeTab === "notification" ? (
           /* NOTIFICATION FORM VIEW */
@@ -3318,7 +3851,7 @@ export default function App() {
                         <div>
                           <span className="text-xs font-black uppercase tracking-wider text-[#E2FF00] block mb-1">Receipt Under Review</span>
                           <span className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider">
-                            Category: {selectedProofCategory.replace("vip_", "").replace("_today", "").replace("_", " ").toUpperCase()} VIP
+                            Category: {selectedProofCategory.replace("vip_", "").replace("_", " ").toUpperCase()} VIP
                           </span>
                         </div>
                         <p className="text-[11px] text-slate-300 font-medium leading-relaxed font-sans max-w-[320px]">
@@ -3332,7 +3865,7 @@ export default function App() {
                         </div>
                         <button
                           onClick={() => {
-                            const cats = ["vip_elite_today", "vip_htft_today", "vip_cs_today"];
+                            const cats = ["vip_elite", "vip_htft", "vip_cs"];
                             const nextIdx = (cats.indexOf(selectedProofCategory) + 1) % cats.length;
                             setSelectedProofCategory(cats[nextIdx]);
                           }}
@@ -3449,9 +3982,9 @@ export default function App() {
                             setProofSubmitSuccess(null);
                             try {
                               const proofId = "proof_" + Math.random().toString(36).substring(2, 15);
-                              const priceStr = selectedProofCategory === "vip_cs_today" 
+                              const priceStr = selectedProofCategory === "vip_cs" 
                                 ? "$1000 USD" 
-                                : selectedProofCategory === "vip_htft_today"
+                                : selectedProofCategory === "vip_htft"
                                   ? "$500 USD"
                                   : "$59 USD";
                               await setDoc(doc(db, "proofs", proofId), {
@@ -3766,9 +4299,9 @@ export default function App() {
 
                                 <div className="flex flex-wrap items-center gap-2">
                                   {[
-                                    { id: "vip_elite_today", label: "Elite VIP" },
-                                    { id: "vip_htft_today", label: "HT/FT VIP" },
-                                    { id: "vip_cs_today", label: "Correct Score VIP" }
+                                    { id: "vip_elite", label: "Elite VIP" },
+                                    { id: "vip_htft", label: "HT/FT VIP" },
+                                    { id: "vip_cs", label: "Correct Score VIP" }
                                   ].map((cat) => {
                                     const isActive = u.subscriptions?.[cat.id] === true;
                                     return (
@@ -3914,7 +4447,7 @@ export default function App() {
 
             {/* Ticket List Body */}
             <div className="w-full max-w-[480px] px-4 flex flex-col items-center gap-0 mt-2">
-              {activeCategory.id.startsWith("vip_") && activeCategory.id.includes("today") && !isSubscribedToActiveCategory ? (
+              {activeCategory.id.startsWith("vip_") && !isSubscribedToActiveCategory ? (
                 // PREMIUM PAYMENT GATEWAY & CONVERSION WIZARD
                 (() => {
                   let planName = "Elite VIP Weekly Access";
@@ -4194,19 +4727,11 @@ export default function App() {
                   )}
 
                   {activeCategory.tickets.map((ticket, index) => {
-                    // Filter matches based on the activeCategory type
+                    // Map all matches in the ticket
                     const filteredMatchesWithIndices = (ticket.matches || []).map((match, mIdx) => ({
                       match,
                       originalIdx: mIdx,
-                    })).filter(({ match, originalIdx }) => {
-                      const status = match.status || getMatchStatus(ticket.date, originalIdx, index);
-                      if (activeCategory.id.includes("today")) {
-                        return status === "pending";
-                      } else if (activeCategory.id.includes("results")) {
-                        return status === "win" || status === "lose";
-                      }
-                      return true;
-                    });
+                    }));
 
                     // If no matches match criteria, hide this ticket block (unless admin mode so they can add)
                     if (filteredMatchesWithIndices.length === 0 && !isMainAdmin) {
@@ -4348,11 +4873,13 @@ export default function App() {
                     onChange={(e) => setEditMatchCategoryId(e.target.value)}
                     className="w-full bg-[#121921] border border-white/10 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-[#E2FF00]/50 font-sans"
                   >
-                    {[...freeCategories, ...vipCategories].map(cat => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.title} ({cat.id.startsWith("free") ? "FREE" : "VIP"})
-                      </option>
-                    ))}
+                    {[...freeCategories, ...vipCategories]
+                      .filter(cat => cat.id.endsWith("_today"))
+                      .map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.title.replace(" (TODAY)", "")} ({cat.id.startsWith("free") ? "FREE" : "VIP"})
+                        </option>
+                      ))}
                   </select>
                 </div>
 
@@ -4630,11 +5157,13 @@ export default function App() {
                     className="w-full bg-[#121921] border border-white/10 rounded-xl py-2 px-3 text-xs text-white focus:outline-none focus:border-[#E2FF00]/50 font-sans"
                   >
                     <option value="" disabled>Select Category</option>
-                    {[...freeCategories, ...vipCategories].map(cat => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.title} ({cat.id.startsWith("free") ? "FREE" : "VIP"})
-                      </option>
-                    ))}
+                    {[...freeCategories, ...vipCategories]
+                      .filter(cat => cat.id.endsWith("_today"))
+                      .map(cat => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.title.replace(" (TODAY)", "")} ({cat.id.startsWith("free") ? "FREE" : "VIP"})
+                        </option>
+                      ))}
                   </select>
                 </div>
 

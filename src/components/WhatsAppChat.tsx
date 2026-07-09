@@ -178,11 +178,24 @@ export default function WhatsAppChat({
   const dragLastTime = useRef(0);
   const dragAnimFrame = useRef<number | null>(null);
 
+  // Smooth Drag and Momentum Scrolling for Sidebar
+  const sidebarContainerRef = useRef<HTMLDivElement | null>(null);
+  const isDraggingSidebar = useRef(false);
+  const sidebarDragStartY = useRef(0);
+  const sidebarDragStartScrollTop = useRef(0);
+  const sidebarDragVelocity = useRef(0);
+  const sidebarDragLastY = useRef(0);
+  const sidebarDragLastTime = useRef(0);
+  const sidebarDragAnimFrame = useRef<number | null>(null);
+
   // Clean up animation frames on unmount
   useEffect(() => {
     return () => {
       if (dragAnimFrame.current) {
         cancelAnimationFrame(dragAnimFrame.current);
+      }
+      if (sidebarDragAnimFrame.current) {
+        cancelAnimationFrame(sidebarDragAnimFrame.current);
       }
     };
   }, []);
@@ -728,6 +741,153 @@ export default function WhatsAppChat({
     dragAnimFrame.current = requestAnimationFrame(scrollStep);
   };
 
+  const handleSidebarTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const container = sidebarContainerRef.current;
+    if (!container) return;
+
+    isDraggingSidebar.current = true;
+    const touch = e.touches[0];
+    sidebarDragStartY.current = touch.clientY;
+    sidebarDragStartScrollTop.current = container.scrollTop;
+    sidebarDragLastY.current = touch.clientY;
+    sidebarDragLastTime.current = Date.now();
+    sidebarDragVelocity.current = 0;
+
+    if (sidebarDragAnimFrame.current) {
+      cancelAnimationFrame(sidebarDragAnimFrame.current);
+      sidebarDragAnimFrame.current = null;
+    }
+  };
+
+  const handleSidebarTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isDraggingSidebar.current) return;
+    const container = sidebarContainerRef.current;
+    if (!container) return;
+
+    const touch = e.touches[0];
+    const deltaY = touch.clientY - sidebarDragStartY.current;
+    
+    container.scrollTop = sidebarDragStartScrollTop.current - deltaY;
+
+    const now = Date.now();
+    const dt = now - sidebarDragLastTime.current;
+    if (dt > 0) {
+      const currentDeltaY = touch.clientY - sidebarDragLastY.current;
+      sidebarDragVelocity.current = (currentDeltaY / dt) * 12;
+    }
+    sidebarDragLastY.current = touch.clientY;
+    sidebarDragLastTime.current = now;
+  };
+
+  const handleSidebarTouchEnd = () => {
+    if (!isDraggingSidebar.current) return;
+    isDraggingSidebar.current = false;
+
+    const container = sidebarContainerRef.current;
+    if (!container || Math.abs(sidebarDragVelocity.current) < 0.5) return;
+
+    let velocity = sidebarDragVelocity.current;
+    const decay = 0.96;
+
+    const scrollStep = () => {
+      if (Math.abs(velocity) < 0.1 || isDraggingSidebar.current) {
+        if (sidebarDragAnimFrame.current) {
+          cancelAnimationFrame(sidebarDragAnimFrame.current);
+          sidebarDragAnimFrame.current = null;
+        }
+        return;
+      }
+
+      container.scrollTop -= velocity;
+      velocity *= decay;
+      sidebarDragAnimFrame.current = requestAnimationFrame(scrollStep);
+    };
+
+    sidebarDragAnimFrame.current = requestAnimationFrame(scrollStep);
+  };
+
+  const handleSidebarMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // Left click only
+    const container = sidebarContainerRef.current;
+    if (!container) return;
+
+    const target = e.target as HTMLElement;
+    if (
+      target.closest("button") || 
+      target.closest("a") || 
+      target.closest("input") || 
+      target.closest("textarea") ||
+      target.closest(".cursor-pointer")
+    ) {
+      return;
+    }
+
+    isDraggingSidebar.current = true;
+    sidebarDragStartY.current = e.clientY;
+    sidebarDragStartScrollTop.current = container.scrollTop;
+    sidebarDragLastY.current = e.clientY;
+    sidebarDragLastTime.current = Date.now();
+    sidebarDragVelocity.current = 0;
+
+    if (sidebarDragAnimFrame.current) {
+      cancelAnimationFrame(sidebarDragAnimFrame.current);
+      sidebarDragAnimFrame.current = null;
+    }
+    
+    container.style.cursor = "grabbing";
+    container.style.userSelect = "none";
+  };
+
+  const handleSidebarMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDraggingSidebar.current) return;
+    const container = sidebarContainerRef.current;
+    if (!container) return;
+
+    const deltaY = e.clientY - sidebarDragStartY.current;
+    container.scrollTop = sidebarDragStartScrollTop.current - deltaY;
+
+    const now = Date.now();
+    const dt = now - sidebarDragLastTime.current;
+    if (dt > 0) {
+      const currentDeltaY = e.clientY - sidebarDragLastY.current;
+      sidebarDragVelocity.current = (currentDeltaY / dt) * 12;
+    }
+    sidebarDragLastY.current = e.clientY;
+    sidebarDragLastTime.current = now;
+  };
+
+  const handleSidebarMouseUpOrLeave = () => {
+    if (!isDraggingSidebar.current) return;
+    isDraggingSidebar.current = false;
+
+    const container = sidebarContainerRef.current;
+    if (container) {
+      container.style.cursor = "grab";
+      container.style.userSelect = "";
+    }
+
+    if (!container || Math.abs(sidebarDragVelocity.current) < 0.5) return;
+
+    let velocity = sidebarDragVelocity.current;
+    const decay = 0.96;
+
+    const scrollStep = () => {
+      if (Math.abs(velocity) < 0.1 || isDraggingSidebar.current) {
+        if (sidebarDragAnimFrame.current) {
+          cancelAnimationFrame(sidebarDragAnimFrame.current);
+          sidebarDragAnimFrame.current = null;
+        }
+        return;
+      }
+
+      container.scrollTop -= velocity;
+      velocity *= decay;
+      sidebarDragAnimFrame.current = requestAnimationFrame(scrollStep);
+    };
+
+    sidebarDragAnimFrame.current = requestAnimationFrame(scrollStep);
+  };
+
   const handleMessageInputChange = (val: string) => {
     if (isMainAdmin && (val.toLowerCase().includes("#url") || val.toLowerCase().includes("/url"))) {
       setShowUrlShortcutModal(true);
@@ -872,176 +1032,6 @@ export default function WhatsAppChat({
                 <MessageSquare className="w-3.5 h-3.5 text-[#00a884]" />
                 Client Chats
               </span>
-              <button
-                type="button"
-                onClick={() => setShowAgentsModal(true)}
-                className="text-[9px] bg-[#00a884]/15 text-[#00a884] hover:bg-[#00a884]/30 border border-[#00a884]/20 px-2 py-0.5 rounded-md font-sans font-black uppercase cursor-pointer transition-all active:scale-95 flex items-center gap-1"
-                title="Manage support agents and availability status"
-              >
-                <Sparkles className="w-2.5 h-2.5 text-yellow-500 animate-pulse" />
-                Agents Panel
-              </button>
-            </div>
-
-            {/* Real-time configuration controls for Admin */}
-            <div className="bg-[#ffffff] border border-[#e9edef] p-3 rounded-xl space-y-3 shadow-sm text-xs font-sans">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-[#111b21] flex items-center gap-1.5">
-                  <span className={`w-2 h-2 rounded-full ${adminSettings.isOnline ? 'bg-[#00a884] animate-pulse shadow-[0_0_6px_#00a884]' : 'bg-slate-400'}`} />
-                  Set Admin Status
-                </span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const nextOnline = !adminSettings.isOnline;
-                    try {
-                      await setDoc(doc(db, "admin_settings", "global"), {
-                        ...adminSettings,
-                        isOnline: nextOnline
-                      });
-                      setAdminSettings(prev => ({ ...prev, isOnline: nextOnline }));
-                    } catch (err) {
-                      console.error("Error updating online status:", err);
-                    }
-                  }}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
-                    adminSettings.isOnline 
-                      ? "bg-[#00a884] text-white hover:bg-[#009171] shadow-sm" 
-                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                  }`}
-                >
-                  {adminSettings.isOnline ? "Online" : "Offline"}
-                </button>
-              </div>
-              
-              <div className="space-y-1.5">
-                <label className="text-[9px] text-slate-500 font-black uppercase block tracking-wider">
-                  Floating Pop-up Greeting
-                </label>
-                <div className="flex gap-1.5">
-                  <input
-                    type="text"
-                    value={adminSettings.customGreeting}
-                    onChange={(e) => {
-                      const text = e.target.value;
-                      setAdminSettings(prev => ({ ...prev, customGreeting: text }));
-                    }}
-                    onBlur={async () => {
-                      try {
-                        await setDoc(doc(db, "admin_settings", "global"), {
-                          ...adminSettings,
-                        });
-                      } catch (err) {
-                        console.error("Error saving custom greeting:", err);
-                      }
-                    }}
-                    placeholder="e.g. Hi👋, how can I help you?"
-                    className="flex-1 bg-[#f0f2f5] border border-[#e9edef] px-2.5 py-1.5 rounded-lg text-xs font-bold text-[#111b21] placeholder-slate-400 focus:outline-none focus:border-[#00a884] focus:bg-white transition-all font-sans"
-                  />
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await setDoc(doc(db, "admin_settings", "global"), {
-                          ...adminSettings,
-                        });
-                      } catch (err) {
-                        console.error("Error saving custom greeting:", err);
-                      }
-                    }}
-                    className="bg-[#00a884] hover:bg-[#009171] text-white px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase cursor-pointer transition-all active:scale-95"
-                  >
-                    Save
-                  </button>
-                </div>
-              </div>
-
-              {/* Show/Hide Agents Admin Setting */}
-              <div className="flex items-center justify-between border-t border-[#f0f2f5] pt-2.5">
-                <span className="font-bold text-[#111b21] flex items-center gap-1.5">
-                  Show Agents Bar
-                </span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const nextShow = adminSettings.showAgentsOnAdmin !== false ? false : true;
-                    try {
-                      await setDoc(doc(db, "admin_settings", "global"), {
-                        ...adminSettings,
-                        showAgentsOnAdmin: nextShow
-                      });
-                      setAdminSettings(prev => ({ ...prev, showAgentsOnAdmin: nextShow }));
-                    } catch (err) {
-                      console.error("Error updating show agents status:", err);
-                    }
-                  }}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
-                    adminSettings.showAgentsOnAdmin !== false
-                      ? "bg-[#00a884] text-white hover:bg-[#009171] shadow-sm" 
-                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                  }`}
-                >
-                  {adminSettings.showAgentsOnAdmin !== false ? "Visible" : "Hidden"}
-                </button>
-              </div>
-
-              {/* Show/Hide Agents on Chat Box Setting */}
-              <div className="flex items-center justify-between border-t border-[#f0f2f5] pt-2.5">
-                <span className="font-bold text-[#111b21] flex items-center gap-1.5">
-                  Agents on Chat Box
-                </span>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const nextShow = adminSettings.showAgentsInChatBox !== false ? false : true;
-                    try {
-                      await setDoc(doc(db, "admin_settings", "global"), {
-                        ...adminSettings,
-                        showAgentsInChatBox: nextShow
-                      });
-                      setAdminSettings(prev => ({ ...prev, showAgentsInChatBox: nextShow }));
-                    } catch (err) {
-                      console.error("Error updating show agents in chat status:", err);
-                    }
-                  }}
-                  className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all duration-200 cursor-pointer ${
-                    adminSettings.showAgentsInChatBox !== false
-                      ? "bg-[#00a884] text-white hover:bg-[#009171] shadow-sm" 
-                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
-                  }`}
-                >
-                  {adminSettings.showAgentsInChatBox !== false ? "Visible" : "Hidden"}
-                </button>
-              </div>
-
-              {/* Default Support Agent Dropdown Setting */}
-              <div className="space-y-1.5 border-t border-[#f0f2f5] pt-2.5">
-                <label className="text-[9px] text-slate-500 font-black uppercase block tracking-wider">
-                  Default Reply Agent
-                </label>
-                <select
-                  value={adminSettings.defaultAgentId || "sophia"}
-                  onChange={async (e) => {
-                    const nextAgentId = e.target.value;
-                    try {
-                      await setDoc(doc(db, "admin_settings", "global"), {
-                        ...adminSettings,
-                        defaultAgentId: nextAgentId
-                      });
-                      setAdminSettings(prev => ({ ...prev, defaultAgentId: nextAgentId }));
-                    } catch (err) {
-                      console.error("Error updating default agent:", err);
-                    }
-                  }}
-                  className="w-full bg-[#f0f2f5] border border-[#e9edef] px-2 py-1.5 rounded-lg text-xs font-bold text-[#111b21] focus:outline-none focus:border-[#00a884] focus:bg-white transition-all font-sans cursor-pointer"
-                >
-                  {(agents.length > 0 ? agents : DEFAULT_AGENTS).map((agent) => (
-                    <option key={agent.id} value={agent.id}>
-                      {agent.name} ({agent.role})
-                    </option>
-                  ))}
-                </select>
-              </div>
             </div>
             
             {/* Search Input */}
@@ -1058,7 +1048,17 @@ export default function WhatsAppChat({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto divide-y divide-[#e9edef] bg-[#ffffff] scrollbar-none">
+          <div 
+            ref={sidebarContainerRef}
+            className="flex-1 overflow-y-auto divide-y divide-[#e9edef] bg-[#ffffff] admin-sidebar-scroll overscroll-contain cursor-grab"
+            onMouseDown={handleSidebarMouseDown}
+            onMouseMove={handleSidebarMouseMove}
+            onMouseUp={handleSidebarMouseUpOrLeave}
+            onMouseLeave={handleSidebarMouseUpOrLeave}
+            onTouchStart={handleSidebarTouchStart}
+            onTouchMove={handleSidebarTouchMove}
+            onTouchEnd={handleSidebarTouchEnd}
+          >
             {filteredSessions.length === 0 ? (
               <div className="p-6 text-center space-y-1 text-slate-400 select-none h-full flex flex-col justify-center items-center">
                 <Search className="w-6 h-6 mx-auto text-slate-300 mb-1" />
