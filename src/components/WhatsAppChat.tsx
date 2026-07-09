@@ -729,9 +729,9 @@ export default function WhatsAppChat({
   };
 
   const handleMessageInputChange = (val: string) => {
-    if (isMainAdmin && val.toLowerCase().includes("#url")) {
+    if (isMainAdmin && (val.toLowerCase().includes("#url") || val.toLowerCase().includes("/url"))) {
       setShowUrlShortcutModal(true);
-      const cleaned = val.replace(/#url/gi, "").trim();
+      const cleaned = val.replace(/#url/gi, "").replace(/\/url/gi, "").trim();
       setInputText(cleaned);
       return;
     }
@@ -1610,6 +1610,20 @@ export default function WhatsAppChat({
                 >
                   <Paperclip className="w-5 h-5 shrink-0" />
                 </button>
+
+                {isMainAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setShowUrlShortcutModal(true)}
+                    className="p-2 rounded-full text-[#00a884] hover:text-white hover:bg-[#00a884] cursor-pointer transition-all active:scale-90 flex items-center justify-center relative group"
+                    title="Generate Link Button (or type /url or #url)"
+                  >
+                    <LinkIcon className="w-5 h-5 shrink-0" />
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[8px] font-bold px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+                      Add Link Button
+                    </span>
+                  </button>
+                )}
                 
                 <input 
                   type="file" 

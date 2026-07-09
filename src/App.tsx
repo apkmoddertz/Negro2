@@ -3748,8 +3748,9 @@ export default function App() {
 
                                 <div className="flex flex-wrap items-center gap-2">
                                   {[
-                                    { id: "vip_cs_today", label: "Correct Score VIP" },
-                                    { id: "vip_htft_today", label: "HT/FT VIP" }
+                                    { id: "vip_elite_today", label: "Elite VIP" },
+                                    { id: "vip_htft_today", label: "HT/FT VIP" },
+                                    { id: "vip_cs_today", label: "Correct Score VIP" }
                                   ].map((cat) => {
                                     const isActive = u.subscriptions?.[cat.id] === true;
                                     return (
