@@ -282,7 +282,7 @@ export default function App() {
   // Navigation & Drawer States
   const [activeTab, setActiveTab] = useState<ActiveTab>("correct_score");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedProofCategory, setSelectedProofCategory] = useState<string>("vip_cs_today");
+  const [selectedProofCategory, setSelectedProofCategory] = useState<string>("vip_elite_today");
 
   // Home Page Navigation States
   const [toggleMode, setToggleMode] = useState<"free" | "vip">("free");
@@ -3314,7 +3314,9 @@ export default function App() {
                         </div>
                         <button
                           onClick={() => {
-                            setSelectedProofCategory(selectedProofCategory === "vip_cs_today" ? "vip_htft_today" : "vip_cs_today");
+                            const cats = ["vip_elite_today", "vip_htft_today", "vip_cs_today"];
+                            const nextIdx = (cats.indexOf(selectedProofCategory) + 1) % cats.length;
+                            setSelectedProofCategory(cats[nextIdx]);
                           }}
                           className="text-xs text-[#E2FF00] hover:underline cursor-pointer font-bold uppercase tracking-wider mt-2"
                         >
@@ -3345,8 +3347,9 @@ export default function App() {
                           }}
                           className="w-full bg-black/50 border border-white/10 hover:border-white/20 focus:border-[#E2FF00] rounded-xl p-3.5 text-xs focus:outline-none focus:ring-1 focus:ring-[#E2FF00] transition-all font-medium text-slate-100 cursor-pointer"
                         >
-                          <option value="vip_cs_today">Correct Score VIP ($1000/week)</option>
-                          <option value="vip_htft_today">HT/FT VIP ($500/week)</option>
+                          <option value="vip_elite_today">Elite VIP 59$</option>
+                          <option value="vip_htft_today">HT/FT VIP 500$</option>
+                          <option value="vip_cs_today">Cs VIP 1000$</option>
                         </select>
                       </div>
 
@@ -3428,7 +3431,11 @@ export default function App() {
                             setProofSubmitSuccess(null);
                             try {
                               const proofId = "proof_" + Math.random().toString(36).substring(2, 15);
-                              const priceStr = selectedProofCategory === "vip_cs_today" ? "$1000 USD" : "$500 USD";
+                              const priceStr = selectedProofCategory === "vip_cs_today" 
+                                ? "$1000 USD" 
+                                : selectedProofCategory === "vip_htft_today"
+                                  ? "$500 USD"
+                                  : "$59 USD";
                               await setDoc(doc(db, "proofs", proofId), {
                                 id: proofId,
                                 userId: currentUser.uid,
