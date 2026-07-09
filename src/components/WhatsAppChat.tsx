@@ -1323,6 +1323,16 @@ export default function WhatsAppChat({
           ) : (
             activeMessages.map((msg, idx) => {
               const isMe = isMainAdmin ? (msg.senderId === "admin") : (msg.senderId !== "admin");
+              
+              // Get sender details if not admin
+              const senderProfile = msg.senderId !== "admin" 
+                ? (allUsers.find(u => u.uid === msg.senderId || u.id === msg.senderId) || (currentUser && currentUser.uid === msg.senderId ? userProfile : null))
+                : null;
+              
+              const senderRealName = senderProfile?.username || msg.senderName || senderProfile?.email?.split("@")[0] || "Client";
+              const senderInitial = senderRealName.charAt(0).toUpperCase() || "C";
+              const isVipUser = senderProfile?.subscriptions ? Object.values(senderProfile.subscriptions).some(v => v === true) : false;
+
               return (
                 <div 
                   key={msg.id || idx} 
@@ -1330,13 +1340,13 @@ export default function WhatsAppChat({
                 >
                   <div className={`max-w-[85%] sm:max-w-[70%] rounded-2xl p-2.5 shadow-sm flex flex-col relative break-words [word-break:break-word] overflow-hidden ${
                     isMe 
-                      ? "bg-[#E2FF00] border border-[#E2FF00]/30 rounded-tr-none text-[#111b21]" 
-                      : "bg-[#870404] border border-transparent rounded-tl-none text-white"
+                      ? "bg-[#20805c] border border-transparent rounded-tr-none text-white" 
+                      : "bg-[#f2f2f3] border border-transparent rounded-tl-none text-[#111b21]"
                   }`}>
                     {/* Message Sender Name / Agent Identity */}
                     {msg.senderId === "admin" ? (
                       adminSettings.showAgentsInChatBox !== false ? (
-                        <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-white/10 select-none">
+                        <div className={`flex items-center gap-2 mb-1.5 pb-1 border-b select-none ${isMe ? 'border-white/10' : 'border-slate-200'}`}>
                           <img
                             src={msg.agentImage || "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150"}
                             alt={msg.agentName || "Support Agent"}
@@ -1344,49 +1354,70 @@ export default function WhatsAppChat({
                             referrerPolicy="no-referrer"
                           />
                           <div className="flex flex-col">
-                            <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-slate-800' : 'text-white'}`}>
+                            <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-emerald-100' : 'text-slate-800'}`}>
                               {msg.agentName || "Sophia"}
                             </span>
-                            <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-slate-400' : 'text-white/60'}`}>
+                            <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-emerald-200/80' : 'text-slate-500/80'}`}>
                               {msg.agentRole || "Support Agent"}
                             </span>
                           </div>
                           <span className={`text-[6.5px] font-bold px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono ${
                             isMe 
-                              ? "text-emerald-600 bg-emerald-500/10 border border-emerald-500/20" 
-                              : "text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/20"
+                              ? "text-emerald-200 bg-white/10 border border-white/10" 
+                              : "text-slate-600 bg-slate-200 border border-slate-300"
                           }`}>
                             Support
                           </span>
                         </div>
                       ) : (
-                        <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-white/10 select-none">
-                          <div className={`w-6 h-6 rounded-full shrink-0 border border-white/10 flex items-center justify-center text-[10px] font-bold ${
-                            isMe ? 'bg-slate-800/10 text-slate-800' : 'bg-white/10 text-white'
+                        <div className={`flex items-center gap-2 mb-1.5 pb-1 border-b select-none ${isMe ? 'border-white/10' : 'border-slate-200'}`}>
+                          <div className={`w-6 h-6 rounded-full shrink-0 border flex items-center justify-center text-[10px] font-bold ${
+                            isMe ? 'bg-white/10 text-white border-white/10' : 'bg-slate-200 text-slate-700 border-slate-300'
                           }`}>
                             🛡️
                           </div>
                           <div className="flex flex-col">
-                            <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-slate-800' : 'text-white'}`}>
+                            <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-emerald-100' : 'text-slate-800'}`}>
                               Support Team
                             </span>
-                            <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-slate-400' : 'text-white/60'}`}>
+                            <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-emerald-200/80' : 'text-slate-500/80'}`}>
                               Official Representative
                             </span>
                           </div>
                           <span className={`text-[6.5px] font-bold px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono ${
                             isMe 
-                              ? "text-emerald-600 bg-emerald-500/10 border border-emerald-500/20" 
-                              : "text-[#E2FF00] bg-[#E2FF00]/10 border border-[#E2FF00]/20"
+                              ? "text-emerald-200 bg-white/10 border border-white/10" 
+                              : "text-slate-600 bg-slate-200 border border-slate-300"
                           }`}>
                             Support
                           </span>
                         </div>
                       )
                     ) : (
-                      <span className={`text-[8px] font-black uppercase tracking-wider mb-1 select-none ${isMe ? 'text-[#005c4b]' : 'text-[#E2FF00]'}`}>
-                        {isMe ? "You" : msg.senderName}
-                      </span>
+                      <div className={`flex items-center gap-2 mb-1.5 pb-1 border-b select-none ${isMe ? 'border-white/10' : 'border-slate-200'}`}>
+                        <div className={`w-6 h-6 rounded-full shrink-0 border flex items-center justify-center text-[10px] font-bold ${
+                          isMe 
+                            ? 'bg-white/10 text-white border-white/10' 
+                            : 'bg-emerald-500/10 text-[#00a884] border-emerald-500/20'
+                        }`}>
+                          {senderInitial}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className={`text-[10px] font-black leading-none font-sans ${isMe ? 'text-emerald-100' : 'text-slate-800'}`}>
+                            {isMe ? `${senderRealName} (You)` : senderRealName}
+                          </span>
+                          <span className={`text-[7px] font-bold tracking-wider uppercase leading-none mt-0.5 ${isMe ? 'text-emerald-200/80' : 'text-slate-500/80'}`}>
+                            {isVipUser ? "🏆 VIP Client" : "Client"}
+                          </span>
+                        </div>
+                        <span className={`text-[6.5px] font-bold px-1 py-0.2 rounded-sm ml-auto uppercase tracking-widest font-mono ${
+                          isMe 
+                            ? "text-emerald-200 bg-white/10 border border-white/10" 
+                            : "text-[#00a884] bg-emerald-500/10 border border-emerald-500/20"
+                        }`}>
+                          {isVipUser ? "VIP" : "Client"}
+                        </span>
+                      </div>
                     )}
                     
                     {/* Image attachments */}
@@ -1463,7 +1494,7 @@ export default function WhatsAppChat({
                         }
                         
                         return (
-                          <p className={`text-xs leading-relaxed font-sans select-text whitespace-pre-wrap break-words [word-break:break-word] overflow-hidden ${isMe ? 'text-[#111b21]' : 'text-white'}`}>
+                          <p className={`text-[14px] leading-relaxed font-sans font-normal select-text whitespace-pre-wrap break-words [word-break:break-word] overflow-hidden ${isMe ? 'text-white' : 'text-[#111b21]'}`}>
                             {msg.text}
                           </p>
                         );
@@ -1471,8 +1502,8 @@ export default function WhatsAppChat({
                     )}
 
                     {/* Metadata */}
-                    <div className={`flex items-center justify-end gap-1 mt-1 self-end select-none ${isMe ? 'text-[#667781]' : 'text-white/60'}`}>
-                      <span className="text-[8px] font-mono">
+                    <div className={`flex items-center justify-end gap-1 mt-1 self-end select-none ${isMe ? 'text-emerald-100/70' : 'text-[#667781]'}`}>
+                      <span className="text-[10px] font-sans">
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                       {isMe && (
@@ -1481,13 +1512,13 @@ export default function WhatsAppChat({
                             msg.readByAdmin ? (
                               <CheckCircle2 className="w-3 h-3 text-[#53bdeb]" />
                             ) : (
-                              <Check className="w-3 h-3 text-slate-400" />
+                              <Check className="w-3 h-3 text-white/55" />
                             )
                           ) : (
                             msg.readByUser ? (
                               <CheckCircle2 className="w-3 h-3 text-[#53bdeb]" />
                             ) : (
-                              <Clock className="w-3 h-3 text-slate-400" />
+                              <Clock className="w-3 h-3 text-white/55" />
                             )
                           )}
                         </span>
