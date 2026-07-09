@@ -1615,6 +1615,26 @@ export default function App() {
       return "BTTS {No}";
     }
 
+    // FT/HT Shorthand Mappings: e.g. FX -> FT {X}, HX -> HT {X}, H1 -> HT {1}
+    if (cleaned.toLowerCase() === "fx") {
+      return "FT {X}";
+    }
+    if (cleaned.toLowerCase() === "f1") {
+      return "FT {1}";
+    }
+    if (cleaned.toLowerCase() === "f2") {
+      return "FT {2}";
+    }
+    if (cleaned.toLowerCase() === "hx") {
+      return "HT {X}";
+    }
+    if (cleaned.toLowerCase() === "h1") {
+      return "HT {1}";
+    }
+    if (cleaned.toLowerCase() === "h2") {
+      return "HT {2}";
+    }
+
     // 1. Double Chance mappings
     if (lower === "home win or draw" || lower === "1x" || lower === "home or draw") {
       return "Double Chance{1X}";
