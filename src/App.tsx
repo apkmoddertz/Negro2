@@ -1959,13 +1959,13 @@ export default function App() {
           <div className="relative">
             {element}
             <span 
-              className="absolute -top-3 -right-5 text-[7.5px] font-black px-1.5 py-0.5 flex items-center justify-center rounded-lg border border-yellow-400/80 z-10 select-none animate-christmas-badge font-sans bg-gradient-to-r from-red-600 via-rose-600 to-red-600 text-white shadow-[0_0_12px_rgba(220,38,38,0.8)] tracking-wider font-extrabold"
+              className="absolute -top-3 -right-5 text-[8px] font-black px-1.5 py-0.5 flex items-center justify-center rounded-lg border border-emerald-400/80 z-10 select-none animate-results-badge font-sans bg-gradient-to-r from-emerald-600 via-teal-500 to-emerald-600 text-white shadow-[0_0_12px_rgba(16,185,129,0.8)] tracking-widest font-extrabold"
               style={{
-                textShadow: "0 1px 2px rgba(0,0,0,0.8)"
+                textShadow: "0 1.5px 3px rgba(0,0,0,0.9)"
               }}
             >
-              <span className="animate-christmas-text flex items-center gap-0.5 text-[7px]">
-                RESULTS 🎄
+              <span className="animate-results-text flex items-center gap-0.5 text-[7.5px] tracking-widest">
+                RESULTS
               </span>
             </span>
           </div>
